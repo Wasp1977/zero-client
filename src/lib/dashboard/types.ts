@@ -58,7 +58,18 @@ export interface Viewer {
   deptId: DepartmentId  // 'all' для director/admin
   isShared: boolean     // true — открыто по share-ссылке (read-only)
   shareToken?: string   // исходный токен, если isShared
+  // Привязка к сервисам: какие сервисы доступны зрителю и подтверждён ли он в каждом.
+  // Для админа — все сервисы 'verified' (он их подключил).
+  // Для share-link зрителя: init из payload.services в 'unverified',
+  // после подтверждения → 'verified'.
+  serviceBindings?: Record<ServiceId, ServiceVerification>
 }
+
+// Статус верификации зрителя в конкретном сервисе
+export type ServiceVerification =
+  | 'verified'     // подтвердил себя (ввёл логин/пароль) — реальные данные
+  | 'unverified'   // не подтвердил — синтетика + CTA «подтвердить»
+  | 'unavailable'  // сервис не доступен этому зрителю (не в payload.services)
 
 export interface WidgetMeta {
   id: WidgetId
@@ -362,6 +373,9 @@ export function applyRls<T extends Record<string, any>>(data: T, scope: DataScop
 export interface SharePayload {
   role: Exclude<ViewerRole, 'admin'>
   deptId: DepartmentId
+  // Какие сервисы доступны зрителю (multi-select админом при создании ссылки).
+  // Для employee — обычно один сервис, для director — оба.
+  services: ServiceId[]
   name?: string          // если не задано — спросим при первом открытии
   iat: number
 }
@@ -376,6 +390,10 @@ export interface ActiveViewer {
   deptId: DepartmentId
   name?: string           // имя — опционально, зритель может не представиться
   phone: string           // телефон — обязательный, используется как логин
+  // Какие сервисы доступны этому зрителю (из payload ссылки)
+  services: ServiceId[]
+  // Какие сервисы зритель уже подтвердил (verified), какие ещё нет (unverified)
+  verifiedServices: ServiceId[]
   // Когда впервые открыл
   firstSeenAt: number
   // Когда последний раз был активен

@@ -30,6 +30,8 @@ import {
   UserPlus,
   RefreshCw,
   Phone,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useDashboardStore } from '@/store/dashboard-store'
@@ -37,6 +39,8 @@ import {
   ActiveViewer,
   DEPARTMENTS,
   DepartmentId,
+  ServiceId,
+  SERVICES,
   ViewerRole,
 } from '@/lib/dashboard/types'
 
@@ -76,11 +80,20 @@ function CreateLinkForm() {
   const [role, setRole] = useState<Role>('employee')
   const [deptId, setDeptId] = useState<DepartmentId>('sales')
   const [name, setName] = useState('')
+  // Сервисы — multi-select, по умолчанию оба включены
+  const [services, setServices] = useState<ServiceId[]>(['oats', 'beeline-crm'])
   const [generatedToken, setGeneratedToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  const toggleService = (sv: ServiceId) => {
+    setServices((prev) =>
+      prev.includes(sv) ? prev.filter((x) => x !== sv) : [...prev, sv],
+    )
+  }
+
   const handleCreate = () => {
-    const token = generateShareLink(role, deptId, name.trim() || undefined)
+    if (services.length === 0) return // нельзя создать ссылку без сервисов
+    const token = generateShareLink(role, deptId, services, name.trim() || undefined)
     setGeneratedToken(token)
     setCopied(false)
   }
@@ -157,6 +170,51 @@ function CreateLinkForm() {
           </div>
         )}
 
+        {/* Multi-select сервисов */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-slate-600">
+            Доступ к сервисам <span className="text-rose-500">*</span>
+          </Label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['oats', 'beeline-crm'] as ServiceId[]).map((sv) => {
+              const svc = SERVICES[sv]
+              const checked = services.includes(sv)
+              return (
+                <button
+                  key={sv}
+                  type="button"
+                  onClick={() => toggleService(sv)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors text-left ${
+                    checked
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                      checked
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    {checked && <Check className="w-3 h-3" />}
+                  </span>
+                  <span className="truncate">{svc.name}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[10px] text-slate-400 leading-snug">
+            Зритель увидит только виджеты выбранных сервисов.
+            Сначала — синтетика, после подтверждения личности — реальные данные.
+          </p>
+          {services.length === 0 && (
+            <p className="text-[10px] text-rose-600 leading-snug">
+              Выберите хотя бы один сервис
+            </p>
+          )}
+        </div>
+
         <div className="space-y-1.5">
           <Label className="text-xs text-slate-600">
             Имя зрителя <span className="text-slate-400">(необязательно)</span>
@@ -173,7 +231,12 @@ function CreateLinkForm() {
           </p>
         </div>
 
-        <Button onClick={handleCreate} className="w-full h-10" size="sm">
+        <Button
+          onClick={handleCreate}
+          disabled={services.length === 0}
+          className="w-full h-10"
+          size="sm"
+        >
           <Link2 className="w-4 h-4 mr-1.5" />
           Создать share-ссылку
         </Button>
@@ -313,6 +376,30 @@ function ActiveViewerCard({ viewer }: { viewer: ActiveViewer }) {
                 {relativeTime(viewer.lastSeenAt)}
               </span>
             </div>
+            {/* Сервисы: verified (зелёный) / unverified (амбра) */}
+            <div className="flex items-center gap-1 mt-1 flex-wrap">
+              {viewer.services.map((sv) => {
+                const isVerified = viewer.verifiedServices.includes(sv)
+                return (
+                  <Badge
+                    key={sv}
+                    variant="outline"
+                    className={`text-[9px] py-0 px-1 ${
+                      isVerified
+                        ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                        : 'border-amber-300 text-amber-700 bg-amber-50'
+                    }`}
+                  >
+                    {isVerified ? (
+                      <ShieldCheck className="w-2.5 h-2.5 mr-0.5" />
+                    ) : (
+                      <ShieldAlert className="w-2.5 h-2.5 mr-0.5" />
+                    )}
+                    {SERVICES[sv].name}
+                  </Badge>
+                )
+              })}
+            </div>
             <p className="text-[10px] text-slate-400 mt-0.5 truncate">
               ссылка …{viewer.shareTokenShort}
             </p>
@@ -376,6 +463,17 @@ function ShareLinksList() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
+            </div>
+            <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+              {link.payload.services.map((sv) => (
+                <Badge
+                  key={sv}
+                  variant="outline"
+                  className="text-[9px] py-0 px-1 border-slate-200 text-slate-600 bg-slate-50"
+                >
+                  {SERVICES[sv].name}
+                </Badge>
+              ))}
             </div>
             <div className="flex items-center gap-1">
               <Input

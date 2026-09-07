@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import {
   ServiceId,
   ServiceStatus,
+  ServiceVerification,
   WidgetId,
   ScenarioStep,
   ScenarioEvent,
@@ -42,6 +43,7 @@ interface DashboardState {
     | { type: 'reminders' }
     | { type: 'catalog' }
     | { type: 'share' }
+    | { type: 'service-verify'; service: ServiceId }
 
   // Лог сценария
   scenarioLog: ScenarioEvent[]
@@ -82,12 +84,23 @@ interface DashboardState {
   openSharePanel: () => void
   previewAs: (employee: Employee) => void
   exitPreview: () => void
-  generateShareLink: (role: Exclude<ViewerRole, 'admin'>, deptId: DepartmentId, name?: string) => string
+  generateShareLink: (
+    role: Exclude<ViewerRole, 'admin'>,
+    deptId: DepartmentId,
+    services: ServiceId[],
+    name?: string,
+  ) => string
   revokeShareLink: (token: string) => void
   loadFromShareToken: (token: string, phone: string, name?: string) => 'ok' | 'need-info'
   cancelPendingShare: () => void
   clearActiveViewers: () => void
   refreshActiveViewers: () => void
+  // Верификация зрителя в сервисе (он ввёл логин/пароль)
+  verifyService: (service: ServiceId) => void
+  // Открыть модалку подтверждения сервиса
+  openServiceVerify: (service: ServiceId) => void
+  // Завершить подтверждение (success: true — ввёл правильно, false — сбой)
+  completeServiceVerify: (service: ServiceId, success: boolean) => void
 
   reset: () => void
 }
@@ -282,10 +295,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     )
   },
 
-  generateShareLink: (role: Exclude<ViewerRole, 'admin'>, deptId: DepartmentId, name?: string) => {
+  generateShareLink: (
+    role: Exclude<ViewerRole, 'admin'>,
+    deptId: DepartmentId,
+    services: ServiceId[],
+    name?: string,
+  ) => {
     const payload: SharePayload = {
       role,
       deptId,
+      services,
       name,
       iat: Date.now(),
     }
@@ -298,8 +317,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }))
     get().logEvent(
       'widget-on-dashboard',
-      `Создана share-ссылка: роль=${ROLE_LABELS[role]}, отдел=${DEPARTMENTS[deptId].name}${name ? `, имя=${name}` : ' (без имени — спросим при открытии)'}`,
-      `Ссылка содержит встроенный контекст: роль + отдел. RLS будет применён при открытии.`,
+      `Создана share-ссылка: роль=${ROLE_LABELS[role]}, отдел=${DEPARTMENTS[deptId].name}, сервисы=${services.map((sv) => SERVICES[sv].name).join('+')}${name ? `, имя=${name}` : ' (без имени — спросим при открытии)'}`,
+      `Зритель увидит виджеты только для выбранных сервисов. Сначала синтетика + CTA «подтвердить себя в сервисе».`,
     )
     return token
   },
@@ -323,18 +342,31 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       return 'need-info' as const
     }
 
-    // Если в токене есть имя — используем его, иначе из аргумента, иначе пусто
     const finalName = payload.name?.trim() || name?.trim() || ''
+
+    // Инициализируем serviceBindings: для сервисов из payload → 'unverified',
+    // для остальных → 'unavailable'
+    const serviceBindings: Record<ServiceId, ServiceVerification> = {
+      oats: payload.services.includes('oats') ? 'unverified' : 'unavailable',
+      'beeline-crm': payload.services.includes('beeline-crm') ? 'unverified' : 'unavailable',
+    }
 
     const viewer: Viewer = {
       role: payload.role,
       userId: `share-${token.slice(-8)}`,
-      name: finalName || finalPhone,  // если имени нет — показываем телефон как имя
+      name: finalName || finalPhone,
       phone: finalPhone,
       deptId: payload.deptId,
       isShared: true,
       shareToken: token,
+      serviceBindings,
     }
+
+    // Виджеты по умолчанию — только для доступных сервисов + self
+    const defaultWidgets: WidgetId[] = []
+    if (payload.services.includes('oats')) defaultWidgets.push('oats-calls')
+    if (payload.services.includes('beeline-crm')) defaultWidgets.push('beeline-leads')
+    defaultWidgets.push('analytics')
 
     // Добавляем/обновляем в activeViewers + persist в localStorage
     const now = Date.now()
@@ -345,7 +377,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       let activeViewers: ActiveViewer[]
       if (existing) {
         activeViewers = s.activeViewers.map((v) =>
-          v === existing ? { ...v, lastSeenAt: now, name: finalName || v.name } : v,
+          v === existing
+            ? { ...v, lastSeenAt: now, name: finalName || v.name, verifiedServices: v.verifiedServices }
+            : v,
         )
       } else {
         const newViewer: ActiveViewer = {
@@ -355,10 +389,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           deptId: payload.deptId,
           name: finalName || undefined,
           phone: finalPhone,
+          services: payload.services,
+          verifiedServices: [],
           firstSeenAt: now,
           lastSeenAt: now,
         }
-        activeViewers = [newViewer, ...s.activeViewers].slice(0, 50) // максимум 50
+        activeViewers = [newViewer, ...s.activeViewers].slice(0, 50)
       }
       saveActiveViewersToStorage(activeViewers)
       return {
@@ -366,7 +402,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         isLoggedIn: true,
         userName: finalName || finalPhone,
         currentStep: 'widget-on-dashboard',
-        addedWidgets: ['oats-calls', 'beeline-leads', 'analytics'],
+        addedWidgets: defaultWidgets,
+        // Для share-link зрителей сервисы всегда authorизованы глобально,
+        // но на уровне viewer.serviceBindings каждый сервис может быть unverified.
+        // Виджеты проверяют viewer.serviceBindings, а не глобальный serviceStatuses.
         serviceStatuses: {
           oats: 'authorized',
           'beeline-crm': 'authorized',
@@ -396,6 +435,58 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     // Перечитываем из localStorage — актуально, если другая вкладка добавила зрителя
     const fresh = loadActiveViewersFromStorage()
     set({ activeViewers: fresh })
+  },
+
+  verifyService: (service: ServiceId) => {
+    // Помечаем сервис как verified в viewer.serviceBindings
+    // и в activeViewers.verifiedServices (для админа)
+    set((s) => {
+      if (!s.viewer) return s
+      const newBindings = {
+        ...(s.viewer.serviceBindings ?? {}),
+        [service]: 'verified' as ServiceVerification,
+      }
+      const updatedViewer = { ...s.viewer, serviceBindings: newBindings }
+
+      // Обновляем activeViewers — добавляем сервис в verifiedServices
+      const activeViewers = s.activeViewers.map((v) => {
+        if (
+          v.shareTokenShort === (s.viewer!.shareToken ?? '').slice(-8) &&
+          v.phone === s.viewer!.phone
+        ) {
+          const verifiedServices = v.verifiedServices.includes(service)
+            ? v.verifiedServices
+            : [...v.verifiedServices, service]
+          return { ...v, verifiedServices, lastSeenAt: Date.now() }
+        }
+        return v
+      })
+      saveActiveViewersToStorage(activeViewers)
+      return { viewer: updatedViewer, activeViewers }
+    })
+  },
+
+  openServiceVerify: (service: ServiceId) => {
+    set({ activeFlow: { type: 'service-verify', service } })
+  },
+
+  completeServiceVerify: (service: ServiceId, success: boolean) => {
+    if (success) {
+      get().verifyService(service)
+      set({ activeFlow: { type: 'none' } })
+      get().logEvent(
+        'widget-on-dashboard',
+        `Зритель подтвердил себя в сервисе ${SERVICES[service].name}`,
+        `Виджеты этого сервиса переключаются с синтетики на реальные данные (с учётом RLS).`,
+      )
+    } else {
+      // Остаёмся в модалке — пользователь может повторить
+      get().logEvent(
+        'widget-on-dashboard',
+        `Не удалось подтвердить себя в сервисе ${SERVICES[service].name}`,
+        'Проверьте логин и пароль от сервиса.',
+      )
+    }
   },
 
   reset: () => {

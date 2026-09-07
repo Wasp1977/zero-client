@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   CreditCard,
   Sparkles,
+  KeyRound,
+  Phone,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useDashboardStore } from '@/store/dashboard-store'
@@ -28,10 +30,126 @@ export function FlowModals() {
   if (activeFlow.type === 'auth') {
     return <AuthModal service={activeFlow.service} />
   }
+  if (activeFlow.type === 'service-verify') {
+    return <ServiceVerifyModal service={activeFlow.service} />
+  }
   if (activeFlow.type === 'catalog') {
     return null // handled separately
   }
   return null
+}
+
+// ===========================================================================
+//  ServiceVerifyModal — модалка подтверждения зрителя в сервисе.
+//  Зритель вводит свой логин/пароль от сервиса → данные становятся реальными.
+// ===========================================================================
+function ServiceVerifyModal({ service }: { service: ServiceId }) {
+  const svc = SERVICES[service]
+  const closeFlow = useDashboardStore((s) => s.closeFlow)
+  const completeServiceVerify = useDashboardStore((s) => s.completeServiceVerify)
+  const viewer = useDashboardStore((s) => s.viewer)
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+
+  const handleSubmit = (success: boolean) => {
+    setProcessing(true)
+    setError(null)
+    setTimeout(() => {
+      setProcessing(false)
+      if (success) {
+        completeServiceVerify(service, true)
+      } else {
+        setError('Не удалось подтвердить. Проверьте логин и пароль от сервиса.')
+      }
+    }, 700)
+  }
+
+  const viewerPhone = viewer?.phone
+
+  return (
+    <ModalShell onClose={closeFlow} maxWidth="max-w-md">
+      <ModalHeader
+        icon={<KeyRound className="w-5 h-5 text-amber-600" />}
+        title={`Подтверждение в сервисе ${svc.name}`}
+        subtitle="Введите свой логин и пароль — дашборд получит доступ к вашим данным"
+      />
+
+      <div className="p-5 space-y-4">
+        {/* Контекст */}
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            <span className="font-medium">Зачем это нужно:</span>{' '}
+            дашборд — это надстройка над сервисами. Чтобы получить ваши реальные
+            данные из {svc.name}, нужно подтвердить свою личность.
+          </p>
+          {viewerPhone && (
+            <p className="text-[11px] text-amber-700 flex items-center gap-1">
+              <Phone className="w-3 h-3" />
+              Вход по номеру: <span className="font-medium">{viewerPhone}</span>
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Логин в {svc.name}</Label>
+            <Input
+              placeholder="user@example.com"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Пароль</Label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit(true)}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-medium text-rose-800">Не удалось подтвердить</p>
+              <p className="text-[11px] text-rose-700 mt-0.5">
+                Проверьте логин и пароль от сервиса {svc.name}.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            className="h-10"
+            disabled={processing}
+            onClick={() => handleSubmit(false)}
+          >
+            Войти (демо: сбой)
+          </Button>
+          <Button
+            className="h-10 bg-amber-600 hover:bg-amber-700"
+            disabled={processing}
+            onClick={() => handleSubmit(true)}
+          >
+            {processing ? 'Проверка...' : 'Подтвердить'}
+          </Button>
+        </div>
+
+        <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+          После подтверждения виджеты {svc.name} переключатся с синтетики
+          на реальные данные с учётом вашей роли (RLS).
+        </p>
+      </div>
+    </ModalShell>
+  )
 }
 
 function PurchaseModal({ service }: { service: ServiceId }) {

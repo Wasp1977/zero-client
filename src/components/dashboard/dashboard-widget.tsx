@@ -154,7 +154,17 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
   const isAdminPreview = viewer !== null && !viewer.isShared
   const isReadOnly = isAdminPreview
 
-  const isReal = serviceStatus === 'authorized'
+  // Для share-link зрителя: real = serviceBindings[service] === 'verified'
+  // Для админа: real = глобальный serviceStatuses[service] === 'authorized'
+  const isReal = (() => {
+    if (widget.service === 'self') return true
+    const svc = widget.service as ServiceId
+    if (viewer && viewer.isShared) {
+      return viewer.serviceBindings?.[svc] === 'verified'
+    }
+    return serviceStatus === 'authorized'
+  })()
+
   const rawData = isReal ? REAL_DATA[id] : SYNTHETIC_DATA[id]
 
   // Применяем RLS-фильтрацию по роли зрителя
@@ -319,7 +329,7 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
         </div>
 
         {/* CTA сервисов (Подключить/Купить) — только для админа (viewer === null).
-            Для share-link зрителей сервисы уже авторизованы — показываем баннер «реальные данные». */}
+            Для share-link зрителей CTA в верхнем ServiceVerificationBanner. */}
         {widget.service !== 'self' && viewer === null && (
           <div className="mt-3">
             {isReal ? (
@@ -336,6 +346,12 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
         {widget.service !== 'self' && viewer !== null && isReal && (
           <div className="mt-3">
             <AuthorizedBanner service={widget.service as ServiceId} />
+          </div>
+        )}
+        {widget.service !== 'self' && viewer !== null && !isReal && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-700 leading-snug flex items-center gap-1">
+            <Sparkles className="w-3 h-3 shrink-0" />
+            Синтетика — подтвердите себя в сервисе (баннер сверху)
           </div>
         )}
       </Card>

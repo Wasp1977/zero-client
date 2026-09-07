@@ -21,6 +21,7 @@ import { FlowModals } from '@/components/dashboard/flow-modals'
 import { SharePanel } from '@/components/dashboard/share-panel'
 import { ViewerBanner } from '@/components/dashboard/viewer-banner'
 import { NamePromptScreen } from '@/components/dashboard/name-prompt-screen'
+import { ServiceVerificationBanner } from '@/components/dashboard/service-verification-banner'
 
 export function Dashboard() {
   const isLoggedIn = useDashboardStore((s) => s.isLoggedIn)
@@ -128,6 +129,9 @@ export function Dashboard() {
 
       {/* Viewer banner (превью / share-режим) */}
       <ViewerBanner />
+
+      {/* Service verification banner (CTA «Подтвердить ОАТС» / «Подтвердить билайнСРМ») */}
+      <ServiceVerificationBanner />
 
       {/* Main */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">

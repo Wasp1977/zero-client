@@ -95,7 +95,20 @@ function WidgetCatalogItem({ id }: { id: WidgetId }) {
 
 export function WidgetCatalog() {
   const closeFlow = useDashboardStore((s) => s.closeFlow)
-  const widgetIds = Object.keys(WIDGETS) as WidgetId[]
+  const viewer = useDashboardStore((s) => s.viewer)
+  const allWidgetIds = Object.keys(WIDGETS) as WidgetId[]
+
+  // Для share-link зрителя фильтруем виджеты: только свои (self) + доступные сервисы
+  // (недоступные сервисы скрываем полностью)
+  const widgetIds = allWidgetIds.filter((id) => {
+    const widget = WIDGETS[id]
+    if (widget.service === 'self') return true
+    const svc = widget.service as ServiceId
+    if (!viewer) return true // админ видит все
+    if (!viewer.isShared) return true // adminPreview видит все
+    // share-link зритель: только виджеты доступных сервисов
+    return viewer.serviceBindings?.[svc] !== 'unavailable'
+  })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
