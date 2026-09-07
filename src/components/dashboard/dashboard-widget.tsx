@@ -15,6 +15,8 @@ import {
   Sparkles,
   ShieldCheck,
   TrendingUp,
+  KeyRound,
+  ShoppingCart,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -75,15 +77,14 @@ function WidgetChart({ data, isSynthetic }: { data: any[]; isSynthetic: boolean 
 
 function SyntheticBanner({
   service,
-  onCta,
+  onConnect,
+  onPurchase,
 }: {
   service: ServiceId
-  onCta: () => void
+  onConnect: () => void
+  onPurchase: () => void
 }) {
-  const status = useDashboardStore((s) => s.serviceStatuses[service])
   const svc = SERVICES[service]
-  const ctaLabel =
-    status === 'not-owned' ? `Купить ${svc.name}` : `Авторизоваться в ${svc.name}`
 
   return (
     <motion.div
@@ -98,14 +99,24 @@ function SyntheticBanner({
             Синтетические демо-данные
           </p>
           <p className="text-[11px] text-orange-700 mt-0.5 leading-relaxed">
-            Чтобы увидеть свои данные — {status === 'not-owned' ? 'купите и подключите' : 'авторизуйтесь в'}{' '}
-            {svc.name}.
+            Подключите {svc.name} со своим логином и паролем, чтобы увидеть свои данные.
           </p>
         </div>
       </div>
-      <Button size="sm" className="w-full h-7 text-[11px]" onClick={onCta}>
-        {ctaLabel}
+      {/* Primary CTA: подключение (вход со своими логином/паролем) */}
+      <Button size="sm" className="w-full h-8 text-[11px]" onClick={onConnect}>
+        <KeyRound className="w-3.5 h-3.5 mr-1" />
+        Подключить сервис
       </Button>
+      {/* Secondary CTA: покупка как fallback */}
+      <button
+        type="button"
+        onClick={onPurchase}
+        className="w-full text-[11px] text-slate-500 hover:text-slate-700 underline-offset-2 hover:underline transition-colors flex items-center justify-center gap-1"
+      >
+        <ShoppingCart className="w-3 h-3" />
+        Нет аккаунта? Купить {svc.name}
+      </button>
     </motion.div>
   )
 }
@@ -138,14 +149,13 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
   const isReal = serviceStatus === 'authorized'
   const data = isReal ? REAL_DATA[id] : SYNTHETIC_DATA[id]
 
-  const handleCta = () => {
+  const handleConnect = () => {
     if (widget.service === 'self') return
-    const svc = widget.service as ServiceId
-    if (serviceStatus === 'not-owned') {
-      requestPurchase(svc)
-    } else {
-      requestAuth(svc)
-    }
+    requestAuth(widget.service as ServiceId)
+  }
+  const handlePurchase = () => {
+    if (widget.service === 'self') return
+    requestPurchase(widget.service as ServiceId)
   }
 
   return (
@@ -293,7 +303,11 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
             {isReal ? (
               <AuthorizedBanner service={widget.service as ServiceId} />
             ) : (
-              <SyntheticBanner service={widget.service as ServiceId} onCta={handleCta} />
+              <SyntheticBanner
+                service={widget.service as ServiceId}
+                onConnect={handleConnect}
+                onPurchase={handlePurchase}
+              />
             )}
           </div>
         )}

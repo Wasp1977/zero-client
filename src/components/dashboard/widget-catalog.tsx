@@ -50,10 +50,8 @@ function WidgetCatalogItem({ id }: { id: WidgetId }) {
     widget.service === 'self'
       ? null
       : serviceStatus === 'authorized'
-        ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">авторизован</Badge>
-        : serviceStatus === 'owned'
-          ? <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">куплен, без авторизации</Badge>
-          : <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100">не куплен</Badge>
+        ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">подключён</Badge>
+        : <Badge className="bg-slate-100 text-slate-600 hover:bg-slate-100">не подключён</Badge>
 
   return (
     <motion.div

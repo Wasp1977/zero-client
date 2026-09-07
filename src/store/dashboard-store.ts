@@ -52,8 +52,8 @@ interface DashboardState {
 }
 
 const initialServiceStatuses: Record<ServiceId, ServiceStatus> = {
-  oats: 'not-owned',
-  'beeline-crm': 'not-owned',
+  oats: 'disconnected',
+  'beeline-crm': 'disconnected',
 }
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
@@ -115,13 +115,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     if (widget.service !== 'self') {
       const svc = serviceStatuses[widget.service]
       if (svc === 'authorized') {
-        detail = `Сервис ${SERVICES[widget.service].name} уже авторизован — показываем реальные данные.`
-      } else if (svc === 'owned') {
-        detail = `Сервис ${SERVICES[widget.service].name} куплен, но не авторизован — показываем синтетику с CTA на авторизацию.`
-        step = 'auth-required'
+        detail = `Сервис ${SERVICES[widget.service].name} уже подключён — показываем реальные данные.`
       } else {
-        detail = `Сервис ${SERVICES[widget.service].name} не куплен — показываем синтетику с CTA на покупку.`
-        step = 'purchase-required'
+        detail = `Сервис ${SERVICES[widget.service].name} не подключён — показываем синтетику с основным CTA «Подключить сервис» (fallback — покупка).`
+        step = 'auth-required'
       }
     } else {
       detail = 'Собственный виджет дашборда — данные доступны сразу.'
@@ -137,8 +134,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({ activeFlow: { type: 'auth', service }, currentStep: 'auth-flow' })
     get().logEvent(
       'auth-flow',
-      `Запрошена авторизация в сервисе ${SERVICES[service].name}`,
-      'Пользователь нажал CTA «Подключите сервис» на виджете с синтетическими данными.',
+      `Открыта форма подключения сервиса ${SERVICES[service].name}`,
+      'Основной сценарий: пользователь входит со своими логином и паролем. Если их нет или не удалось войти — предложим покупку сервиса.',
     )
   },
 
@@ -146,24 +143,25 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({ activeFlow: { type: 'purchase', service }, currentStep: 'purchase-flow' })
     get().logEvent(
       'purchase-flow',
-      `Запущен сценарий продаж (CJ) для сервиса ${SERVICES[service].name}`,
-      `Цена: ${SERVICES[service].price}. Если покупка не состоится — будет отложенный ремаркетинг.`,
+      `Запущен fallback-сценарий покупки сервиса ${SERVICES[service].name} (CJ)`,
+      `Цена: ${SERVICES[service].price}. Предлагается, если у пользователя нет логина/пароля или не удалось войти.`,
     )
   },
 
   completePurchase: (service: ServiceId) => {
+    // Покупка сервиса создаёт аккаунт — сервис сразу становится авторизованным
     set((s) => ({
       serviceStatuses: {
         ...s.serviceStatuses,
-        [service]: 'owned',
+        [service]: 'authorized',
       },
-      activeFlow: { type: 'auth', service },
-      currentStep: 'auth-flow',
+      activeFlow: { type: 'none' },
+      currentStep: 'success',
     }))
     get().logEvent(
-      'purchase-flow',
-      `Покупка сервиса ${SERVICES[service].name} завершена`,
-      'Сервис переведён в статус «куплен». Запускается авторизация.',
+      'success',
+      `Покупка сервиса ${SERVICES[service].name} завершена — аккаунт создан`,
+      'После покупки сервис автоматически подключается, виджеты переключаются с синтетики на реальные данные.',
     )
   },
 
@@ -179,22 +177,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }))
       get().logEvent(
         'success',
-        `Авторизация в сервисе ${SERVICES[service].name} прошла успешно`,
+        `Подключение к сервису ${SERVICES[service].name} выполнено успешно`,
         'Виджеты этого сервиса переключаются с синтетики на реальные данные.',
       )
     } else {
-      set((s) => ({
-        serviceStatuses: {
-          ...s.serviceStatuses,
-          [service]: s.serviceStatuses[service] === 'owned' ? 'owned' : 'owned',
-        },
-        activeFlow: { type: 'purchase', service },
-        currentStep: 'purchase-flow',
-      }))
+      // Остаёмся в окне авторизации — пользователь может повторить вход
+      // или выбрать fallback «Купить сервис».
+      set({ activeFlow: { type: 'auth', service }, currentStep: 'auth-flow' })
       get().logEvent(
         'auth-flow',
-        `Авторизация в сервисе ${SERVICES[service].name} не удалась`,
-        'Предлагается альтернатива: покупка/ремаркетинг через CJ.',
+        `Не удалось подключиться к сервису ${SERVICES[service].name}`,
+        'Показываем ошибку и усиливаем альтернативу: «Нет аккаунта? Купить сервис».',
       )
     }
   },

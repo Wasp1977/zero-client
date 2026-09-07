@@ -3,9 +3,9 @@
 export type ServiceId = 'oats' | 'beeline-crm'
 
 export type ServiceStatus =
-  | 'not-owned'      // Сервис не куплен и не подключён
-  | 'owned'          // Куплен, но не авторизован
-  | 'authorized'     // Авторизован
+  | 'disconnected'   // Сервис не подключён (нет авторизации). Пользователь может
+                    // либо подключиться со своими логином/паролем, либо купить сервис.
+  | 'authorized'    // Авторизован — виджеты показывают реальные данные.
 
 export type WidgetId =
   | 'oats-calls'

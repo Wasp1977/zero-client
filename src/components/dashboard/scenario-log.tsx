@@ -21,10 +21,10 @@ const STEP_LABELS: Record<string, { label: string; color: string }> = {
   'empty-dashboard': { label: 'Дашборд пуст', color: 'bg-slate-100 text-slate-600' },
   'widget-catalog': { label: 'Каталог', color: 'bg-sky-100 text-sky-700' },
   'widget-on-dashboard': { label: 'Виджет добавлен', color: 'bg-emerald-100 text-emerald-700' },
-  'auth-required': { label: 'Нужна авторизация', color: 'bg-orange-100 text-orange-700' },
-  'purchase-required': { label: 'Нужна покупка', color: 'bg-rose-100 text-rose-700' },
+  'auth-required': { label: 'Нужно подключение', color: 'bg-orange-100 text-orange-700' },
+  'purchase-required': { label: 'Fallback: покупка', color: 'bg-rose-100 text-rose-700' },
   'purchase-flow': { label: 'Покупка (CJ)', color: 'bg-purple-100 text-purple-700' },
-  'auth-flow': { label: 'Авторизация', color: 'bg-amber-100 text-amber-700' },
+  'auth-flow': { label: 'Подключение', color: 'bg-amber-100 text-amber-700' },
   success: { label: 'Успех', color: 'bg-emerald-100 text-emerald-700' },
 }
 

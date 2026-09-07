@@ -145,17 +145,17 @@ function PurchaseModal({ service }: { service: ServiceId }) {
             <CheckCircle2 className="w-8 h-8 text-emerald-600" />
           </motion.div>
           <div>
-            <h4 className="font-semibold text-slate-900">Покупка завершена</h4>
+            <h4 className="font-semibold text-slate-900">Подписка оформлена</h4>
             <p className="text-xs text-slate-500 mt-1">
-              Сервис {svc.name} теперь «куплен». Запускаем авторизацию...
+              Аккаунт {svc.name} создан автоматически — сервис уже подключён.
+              Виджеты переключаются на реальные данные.
             </p>
           </div>
           <Button
             className="w-full h-10"
             onClick={() => completePurchase(service)}
           >
-            <LogIn className="w-4 h-4 mr-2" />
-            Перейти к авторизации
+            Вернуться к дашборду
           </Button>
         </div>
       )}
@@ -181,7 +181,7 @@ function AuthModal({ service }: { service: ServiceId }) {
       if (success) {
         completeAuth(service, true)
       } else {
-        setError('Не удалось авторизоваться. Проверьте данные или купите сервис.')
+        setError('Не удалось войти. Проверьте логин и пароль — или купите сервис, если у вас нет аккаунта.')
       }
     }, 700)
   }
@@ -190,8 +190,8 @@ function AuthModal({ service }: { service: ServiceId }) {
     <ModalShell onClose={closeFlow} maxWidth="max-w-md">
       <ModalHeader
         icon={<LogIn className="w-5 h-5 text-amber-600" />}
-        title={`Авторизация в ${svc.name}`}
-        subtitle="Подключите сервис, чтобы виджет показал реальные данные"
+        title={`Подключение сервиса ${svc.name}`}
+        subtitle="Войдите со своим логином и паролем, чтобы виджет показал реальные данные"
       />
 
       <div className="p-5 space-y-4">
@@ -211,22 +211,56 @@ function AuthModal({ service }: { service: ServiceId }) {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit(true)}
             />
           </div>
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-medium text-rose-800">Ошибка авторизации</p>
-              <p className="text-[11px] text-rose-700 mt-0.5">
-                Проверьте данные или оформите покупку сервиса.
-              </p>
+        {error ? (
+          /* После ошибки — усиливаем альтернативу покупки */
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-lg border border-rose-200 bg-rose-50 p-3 space-y-2"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-medium text-rose-800">Не удалось войти</p>
+                <p className="text-[11px] text-rose-700 mt-0.5">
+                  Проверьте логин и пароль. Если у вас ещё нет аккаунта {svc.name} —
+                  можно оформить подписку, и аккаунт создастся автоматически.
+                </p>
+              </div>
             </div>
+            <Button
+              size="sm"
+              className="w-full h-8 text-[11px] bg-purple-600 hover:bg-purple-700"
+              onClick={() => requestPurchase(service)}
+            >
+              <ShoppingCart className="w-3.5 h-3.5 mr-1" />
+              Купить {svc.name} — {svc.price}
+            </Button>
+          </motion.div>
+        ) : (
+          /* До ошибки — покупка как спокойная вторичная альтернатива */
+          <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 leading-tight">
+              <Sparkles className="w-3 h-3 text-slate-400 shrink-0" />
+              <span>Нет аккаунта? Можно купить сервис за {svc.price}.</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[11px] text-purple-700 hover:text-purple-800 hover:bg-purple-50 px-2 shrink-0"
+              onClick={() => requestPurchase(service)}
+            >
+              Купить →
+            </Button>
           </div>
         )}
 
+        {/* Основное действие — вход */}
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="outline"
@@ -234,31 +268,21 @@ function AuthModal({ service }: { service: ServiceId }) {
             disabled={processing}
             onClick={() => handleSubmit(false)}
           >
-            Симулировать ошибку
+            Войти (демо: сбой)
           </Button>
           <Button
             className="h-10"
             disabled={processing}
             onClick={() => handleSubmit(true)}
           >
-            {processing ? 'Проверка...' : 'Войти успешно'}
+            {processing ? 'Проверка...' : 'Войти'}
           </Button>
         </div>
 
-        <div className="pt-2 border-t border-slate-100">
-          <p className="text-[11px] text-slate-500 mb-2">
-            Альтернатива, если авторизация не удалась:
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full h-8 text-xs text-purple-700 hover:text-purple-800"
-            onClick={() => requestPurchase(service)}
-          >
-            <ShoppingCart className="w-3.5 h-3.5 mr-1" />
-            Купить сервис через CJ
-          </Button>
-        </div>
+        <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+          «Войти (демо: сбой)» — показывает поведение при неверном логине/пароле:<br />
+          появится усиленное предложение купить сервис как fallback.
+        </p>
       </div>
     </ModalShell>
   )
