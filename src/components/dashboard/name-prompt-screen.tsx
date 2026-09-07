@@ -16,7 +16,11 @@ import {
   LogIn,
 } from 'lucide-react'
 import { useDashboardStore } from '@/store/dashboard-store'
-import { DEPARTMENTS, ViewerRole } from '@/lib/dashboard/types'
+import {
+  DEPARTMENTS,
+  ViewerRole,
+  decodeShareToken,
+} from '@/lib/dashboard/types'
 import { formatPhone, isValidPhone } from '@/lib/dashboard/phone'
 
 const ROLE_META: Record<Exclude<ViewerRole, 'admin'>, { label: string; icon: any }> = {
@@ -46,12 +50,11 @@ export function NamePromptScreen() {
   let role: Exclude<ViewerRole, 'admin'> = 'employee'
   let deptId: keyof typeof DEPARTMENTS = 'sales'
   try {
-    const b64 = pendingShareToken.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
-    const json = decodeURIComponent(escape(atob(padded)))
-    const payload = JSON.parse(json)
-    role = payload.role
-    deptId = payload.deptId
+    const payload = decodeShareToken(pendingShareToken)
+    if (payload) {
+      role = payload.role
+      deptId = payload.deptId
+    }
   } catch {
     // ignore
   }

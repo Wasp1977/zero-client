@@ -526,7 +526,14 @@ function loadActiveViewersFromStorage(): ActiveViewer[] {
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed as ActiveViewer[]
+    // Миграция старых записей без полей services / verifiedServices
+    return parsed.map((v: any) => ({
+      ...v,
+      services: Array.isArray(v.services) ? v.services : [],
+      verifiedServices: Array.isArray(v.verifiedServices) ? v.verifiedServices : [],
+      name: typeof v.name === 'string' ? v.name : undefined,
+      phone: typeof v.phone === 'string' ? v.phone : '',
+    })) as ActiveViewer[]
   } catch {
     return []
   }

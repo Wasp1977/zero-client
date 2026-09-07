@@ -400,10 +400,33 @@ export interface ActiveViewer {
   lastSeenAt: number
 }
 
+// UTF-8 safe base64 encode/decode (замена устаревших escape/unescape)
+function utf8ToBase64(str: string): string {
+  // Используем TextEncoder, если доступен (браузер + Node 18+)
+  if (typeof TextEncoder !== 'undefined') {
+    const bytes = new TextEncoder().encode(str)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
+  }
+  // Fallback для старых окружений
+  return btoa(unescape(encodeURIComponent(str)))
+}
+
+function base64ToUtf8(b64: string): string {
+  if (typeof TextDecoder !== 'undefined') {
+    const binary = atob(b64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return new TextDecoder().decode(bytes)
+  }
+  return decodeURIComponent(escape(atob(b64)))
+}
+
 export function encodeShareToken(payload: SharePayload): string {
   const json = JSON.stringify(payload)
   // base64url
-  const b64 = btoa(unescape(encodeURIComponent(json)))
+  const b64 = utf8ToBase64(json)
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
@@ -411,7 +434,7 @@ export function decodeShareToken(token: string): SharePayload | null {
   try {
     const b64 = token.replace(/-/g, '+').replace(/_/g, '/')
     const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
-    const json = decodeURIComponent(escape(atob(padded)))
+    const json = base64ToUtf8(padded)
     return JSON.parse(json) as SharePayload
   } catch {
     return null

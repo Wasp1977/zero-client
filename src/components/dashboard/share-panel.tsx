@@ -378,8 +378,8 @@ function ActiveViewerCard({ viewer }: { viewer: ActiveViewer }) {
             </div>
             {/* Сервисы: verified (зелёный) / unverified (амбра) */}
             <div className="flex items-center gap-1 mt-1 flex-wrap">
-              {viewer.services.map((sv) => {
-                const isVerified = viewer.verifiedServices.includes(sv)
+              {(viewer.services ?? []).map((sv) => {
+                const isVerified = (viewer.verifiedServices ?? []).includes(sv)
                 return (
                   <Badge
                     key={sv}
