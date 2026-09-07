@@ -22,6 +22,7 @@ import { ServicesPanel } from '@/components/dashboard/services-panel'
 import { ScenarioLog } from '@/components/dashboard/scenario-log'
 import { SharePanel } from '@/components/dashboard/share-panel'
 import { ViewerBanner } from '@/components/dashboard/viewer-banner'
+import { NamePromptScreen } from '@/components/dashboard/name-prompt-screen'
 
 export function Dashboard() {
   const isLoggedIn = useDashboardStore((s) => s.isLoggedIn)
@@ -33,6 +34,7 @@ export function Dashboard() {
   const logout = useDashboardStore((s) => s.logout)
   const viewer = useDashboardStore((s) => s.viewer)
   const loadFromShareToken = useDashboardStore((s) => s.loadFromShareToken)
+  const pendingShareToken = useDashboardStore((s) => s.pendingShareToken)
 
   const shareInitialized = useRef(false)
 
@@ -53,6 +55,11 @@ export function Dashboard() {
       window.history.replaceState({}, '', url.toString())
     }
   }, [loadFromShareToken])
+
+  // Если ждём имя от зрителя — показываем экран ввода имени
+  if (pendingShareToken) {
+    return <NamePromptScreen />
+  }
 
   if (!isLoggedIn) {
     return <LoginScreen />

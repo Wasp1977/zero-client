@@ -14,6 +14,7 @@ import {
   ViewerRole,
   DepartmentId,
   SharePayload,
+  ActiveViewer,
   encodeShareToken,
   decodeShareToken,
   DEPARTMENTS,
@@ -52,8 +53,17 @@ interface DashboardState {
   //    либо viewer по share-ссылке (isShared=true → read-only режим)
   viewer: Viewer | null
 
-  // Сгенерированные share-ссылки (история) — для отображения в админке
+  // Сгенерированные админом share-ссылки (история)
   shareLinks: Array<{ token: string; payload: SharePayload; createdAt: number }>
+
+  // Активные зрители — те, кто перешёл по share-ссылке.
+  // Появляются у админа после того, как зритель открыл ссылку и представился.
+  // Persist в localStorage, чтобы переживать reload.
+  activeViewers: ActiveViewer[]
+
+  // Когда share-ссылка открыта без name — нужно спросить имя.
+  // Этот флаг показывает, что ждём ввода имени от зрителя.
+  pendingShareToken: string | null
 
   // Действия
   login: (name: string) => void
@@ -72,9 +82,12 @@ interface DashboardState {
   openSharePanel: () => void
   previewAs: (employee: Employee) => void
   exitPreview: () => void
-  generateShareLink: (employee: Employee) => string
+  generateShareLink: (role: Exclude<ViewerRole, 'admin'>, deptId: DepartmentId, name?: string) => string
   revokeShareLink: (token: string) => void
-  loadFromShareToken: (token: string) => boolean
+  loadFromShareToken: (token: string, name?: string) => 'ok' | 'need-name'
+  cancelPendingShare: () => void
+  clearActiveViewers: () => void
+  refreshActiveViewers: () => void
 
   reset: () => void
 }
@@ -94,6 +107,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   scenarioLog: [],
   viewer: null,
   shareLinks: [],
+  activeViewers: loadActiveViewersFromStorage(),
+  pendingShareToken: null,
 
   login: (name: string) => {
     set({
@@ -267,12 +282,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     )
   },
 
-  generateShareLink: (employee: Employee) => {
+  generateShareLink: (role: Exclude<ViewerRole, 'admin'>, deptId: DepartmentId, name?: string) => {
     const payload: SharePayload = {
-      role: employee.role,
-      userId: employee.id,
-      name: employee.name,
-      deptId: employee.deptId,
+      role,
+      deptId,
+      name,
       iat: Date.now(),
     }
     const token = encodeShareToken(payload)
@@ -284,8 +298,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }))
     get().logEvent(
       'widget-on-dashboard',
-      `Сгенерирована share-ссылка для ${employee.name} (${ROLE_LABELS[employee.role]})`,
-      `Ссылка содержит встроенный контекст: роль + отдел + userId. RLS будет применён при открытии.`,
+      `Создана share-ссылка: роль=${ROLE_LABELS[role]}, отдел=${DEPARTMENTS[deptId].name}${name ? `, имя=${name}` : ' (без имени — спросим при открытии)'}`,
+      `Ссылка содержит встроенный контекст: роль + отдел. RLS будет применён при открытии.`,
     )
     return token
   },
@@ -295,33 +309,89 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     get().logEvent(
       'widget-on-dashboard',
       'Share-ссылка отозвана',
-      'Доступ по этой ссылке больше недействителен.',
+      'Доступ по этой ссылке больше недействителен (в реальной системе — помечаем как revoked на бэке).',
     )
   },
 
-  loadFromShareToken: (token: string) => {
+  loadFromShareToken: (token: string, name?: string) => {
     const payload = decodeShareToken(token)
-    if (!payload) return false
+    if (!payload) return 'ok' as const // невалидный токен — игнорируем
+
+    // Если в токене нет имени и внешнее имя тоже не передано — нужно спросить
+    const finalName = payload.name?.trim() || name?.trim()
+    if (!finalName) {
+      set({ pendingShareToken: token })
+      return 'need-name' as const
+    }
+
     const viewer: Viewer = {
       role: payload.role,
-      userId: payload.userId,
-      name: payload.name,
+      userId: `share-${token.slice(-8)}`,
+      name: finalName,
       deptId: payload.deptId,
       isShared: true,
       shareToken: token,
     }
-    set({
-      viewer,
-      isLoggedIn: true,
-      userName: payload.name,
-      currentStep: 'widget-on-dashboard',
-      addedWidgets: ['oats-calls', 'beeline-leads', 'analytics'],
-      serviceStatuses: {
-        oats: 'authorized',
-        'beeline-crm': 'authorized',
-      },
+
+    // Добавляем/обновляем в activeViewers + persist в localStorage
+    const now = Date.now()
+    set((s) => {
+      const existing = s.activeViewers.find(
+        (v) => v.shareTokenShort === token.slice(-8) && v.name === finalName,
+      )
+      let activeViewers: ActiveViewer[]
+      if (existing) {
+        activeViewers = s.activeViewers.map((v) =>
+          v === existing ? { ...v, lastSeenAt: now } : v,
+        )
+      } else {
+        const newViewer: ActiveViewer = {
+          sessionId: `s-${now}-${Math.random().toString(36).slice(2, 8)}`,
+          shareTokenShort: token.slice(-8),
+          role: payload.role,
+          deptId: payload.deptId,
+          name: finalName,
+          firstSeenAt: now,
+          lastSeenAt: now,
+        }
+        activeViewers = [newViewer, ...s.activeViewers].slice(0, 50) // максимум 50
+      }
+      saveActiveViewersToStorage(activeViewers)
+      return {
+        viewer,
+        isLoggedIn: true,
+        userName: finalName,
+        currentStep: 'widget-on-dashboard',
+        addedWidgets: ['oats-calls', 'beeline-leads', 'analytics'],
+        serviceStatuses: {
+          oats: 'authorized',
+          'beeline-crm': 'authorized',
+        },
+        pendingShareToken: null,
+        activeViewers,
+      }
     })
-    return true
+    return 'ok' as const
+  },
+
+  cancelPendingShare: () => {
+    set({ pendingShareToken: null })
+  },
+
+  clearActiveViewers: () => {
+    set({ activeViewers: [] })
+    saveActiveViewersToStorage([])
+    get().logEvent(
+      'widget-on-dashboard',
+      'Список активных зрителей очищен',
+      'Локальная история просмотров удалена. На серверной стороне эти записи хранятся отдельно.',
+    )
+  },
+
+  refreshActiveViewers: () => {
+    // Перечитываем из localStorage — актуально, если другая вкладка добавила зрителя
+    const fresh = loadActiveViewersFromStorage()
+    set({ activeViewers: fresh })
   },
 
   reset: () => {
@@ -335,6 +405,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       scenarioLog: [],
       viewer: null,
       shareLinks: [],
+      pendingShareToken: null,
+      // activeViewers НЕ сбрасываем — они переживают logout,
+      // т.к. это история просмотров, видимая админу.
     })
   },
 }))
@@ -344,4 +417,31 @@ const ROLE_LABELS: Record<ViewerRole, string> = {
   director: 'директор',
   manager: 'менеджер',
   employee: 'сотрудник',
+}
+
+// ===== localStorage helpers для activeViewers =====
+// Храним активных зрителей между сессиями — чтобы админ видел, кто открывал ссылки
+
+const STORAGE_KEY = 'dashboard-active-viewers'
+
+function loadActiveViewersFromStorage(): ActiveViewer[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed as ActiveViewer[]
+  } catch {
+    return []
+  }
+}
+
+function saveActiveViewersToStorage(viewers: ActiveViewer[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(viewers))
+  } catch {
+    // ignore
+  }
 }

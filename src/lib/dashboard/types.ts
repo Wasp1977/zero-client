@@ -354,13 +354,30 @@ export function applyRls<T extends Record<string, any>>(data: T, scope: DataScop
 //  Share-token encode/decode (base64-URL-safe, для прототипа)
 // ===========================================================================
 // В проде — подписанный JWT с exp; в прототипе — простой base64-json.
+// ВАЖНО: админ не знает, кто именно перейдёт по ссылке — он создаёт ссылку
+// с ролью и отделом, а имя зритель вводит сам при первом открытии.
+// Поэтому name в payload может быть пустым — он заполнится после первого открытия.
 
 export interface SharePayload {
   role: Exclude<ViewerRole, 'admin'>
-  userId: string
-  name: string
   deptId: DepartmentId
+  name?: string          // если не задано — спросим при первом открытии
   iat: number
+}
+
+export interface ActiveViewer {
+  // Идентификатор генерируется при первом открытии ссылки
+  sessionId: string
+  // Ссылка, по которой перешёл зритель (последние 8 символов для отображения)
+  shareTokenShort: string
+  // Данные зрителя
+  role: Exclude<ViewerRole, 'admin'>
+  deptId: DepartmentId
+  name: string
+  // Когда впервые открыл
+  firstSeenAt: number
+  // Когда последний раз был активен
+  lastSeenAt: number
 }
 
 export function encodeShareToken(payload: SharePayload): string {

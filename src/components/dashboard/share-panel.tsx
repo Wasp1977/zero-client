@@ -1,40 +1,47 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   X,
   Share2,
-  Eye,
   Copy,
   Check,
   Trash2,
-  User,
-  Users,
   Crown,
-  Building2,
-  Shield,
+  Users,
+  User,
   Link2,
+  Eye,
+  Clock,
+  Building2,
+  PlusCircle,
+  UserPlus,
+  RefreshCw,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDashboardStore } from '@/store/dashboard-store'
 import {
-  EMPLOYEES,
-  Employee,
-  ViewerRole,
+  ActiveViewer,
   DEPARTMENTS,
+  DepartmentId,
+  ViewerRole,
 } from '@/lib/dashboard/types'
 
-const ROLE_META: Record<ViewerRole, { label: string; color: string; icon: any; access: string }> = {
-  admin: {
-    label: 'Админ',
-    color: 'bg-amber-100 text-amber-700',
-    icon: Shield,
-    access: 'Полные права, управляет шарингом',
-  },
+type Role = Exclude<ViewerRole, 'admin'>
+
+const ROLE_META: Record<Role, { label: string; color: string; icon: any; access: string }> = {
   director: {
     label: 'Директор',
     color: 'bg-purple-100 text-purple-700',
@@ -55,21 +62,188 @@ const ROLE_META: Record<ViewerRole, { label: string; color: string; icon: any; a
   },
 }
 
-function EmployeeRow({ emp }: { emp: Employee }) {
-  const previewAs = useDashboardStore((s) => s.previewAs)
-  const generateShareLink = useDashboardStore((s) => s.generateShareLink)
-  const [copied, setCopied] = useState(false)
-  const meta = ROLE_META[emp.role]
-  const RoleIcon = meta.icon
-  const deptName = emp.role === 'director' ? 'Все отделы' : DEPARTMENTS[emp.deptId].name
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return 'только что'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} мин назад`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} ч назад`
+  return new Date(ts).toLocaleDateString('ru-RU')
+}
 
-  const handleCopyLink = () => {
-    const token = generateShareLink(emp)
-    const url = `${window.location.origin}/?share=${token}`
+function CreateLinkForm() {
+  const generateShareLink = useDashboardStore((s) => s.generateShareLink)
+  const [role, setRole] = useState<Role>('employee')
+  const [deptId, setDeptId] = useState<DepartmentId>('sales')
+  const [name, setName] = useState('')
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleCreate = () => {
+    const token = generateShareLink(role, deptId, name.trim() || undefined)
+    setGeneratedToken(token)
+    setCopied(false)
+  }
+
+  const handleCopy = () => {
+    if (!generatedToken) return
+    const url = `${window.location.origin}/?share=${generatedToken}`
     navigator.clipboard?.writeText(url).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }
+
+  // Для director — отдел не нужен
+  const showDept = role !== 'director'
+
+  return (
+    <Card className="p-4 border-slate-200">
+      <div className="flex items-center gap-2 mb-3">
+        <PlusCircle className="w-4 h-4 text-purple-600" />
+        <h4 className="text-sm font-semibold text-slate-900">Создать новую ссылку</h4>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs text-slate-600">Роль зрителя</Label>
+          <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="director">Директор — видит все отделы</SelectItem>
+              <SelectItem value="manager">Менеджер — видит свой отдел</SelectItem>
+              <SelectItem value="employee">Сотрудник — видит только себя</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {showDept && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-slate-600">Отдел</Label>
+            <Select
+              value={deptId}
+              onValueChange={(v) => setDeptId(v as DepartmentId)}
+              disabled={role === 'director'}
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sales">Отдел продаж</SelectItem>
+                <SelectItem value="support">Отдел поддержки</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-slate-600">
+            Имя зрителя <span className="text-slate-400">(необязательно)</span>
+          </Label>
+          <Input
+            placeholder="Оставьте пустым — зритель сам представится при открытии"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="h-9 text-sm"
+          />
+          <p className="text-[10px] text-slate-400 leading-snug">
+            Если имя не задано — при первом открытии ссылки зритель увидит экран
+            «Представьтесь, пожалуйста».
+          </p>
+        </div>
+
+        <Button onClick={handleCreate} className="w-full h-10" size="sm">
+          <Link2 className="w-4 h-4 mr-1.5" />
+          Создать share-ссылку
+        </Button>
+
+        <AnimatePresence>
+          {generatedToken && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <p className="text-[11px] font-medium text-emerald-800">
+                    Ссылка создана — отправьте её сотруднику
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Input
+                    readOnly
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?share=${generatedToken}`}
+                    className="h-7 text-[10px] font-mono bg-white"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 shrink-0 bg-emerald-600 hover:bg-emerald-700"
+                    onClick={handleCopy}
+                  >
+                    {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-emerald-700 leading-snug">
+                  {copied ? 'Ссылка скопирована в буфер обмена' : 'Нажмите, чтобы скопировать'}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </Card>
+  )
+}
+
+function ActiveViewersList() {
+  const activeViewers = useDashboardStore((s) => s.activeViewers)
+  const clearActiveViewers = useDashboardStore((s) => s.clearActiveViewers)
+
+  if (activeViewers.length === 0) {
+    return (
+      <div className="rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/50 p-6 text-center">
+        <UserPlus className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+        <p className="text-xs text-slate-500 font-medium">Пока никто не открывал ваши ссылки</p>
+        <p className="text-[11px] text-slate-400 mt-1 leading-relaxed max-w-xs mx-auto">
+          Создайте ссылку выше и отправьте сотруднику.
+          Когда он перейдёт по ней и представится — он появится здесь.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Badge variant="outline" className="text-[10px] py-0">
+          {activeViewers.length} {activeViewers.length === 1 ? 'зритель' : 'зрителей'}
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-[11px] text-slate-500 hover:text-rose-600"
+          onClick={clearActiveViewers}
+        >
+          <Trash2 className="w-3 h-3 mr-1" />
+          Очистить
+        </Button>
+      </div>
+
+      {activeViewers.map((v) => (
+        <ActiveViewerCard key={v.sessionId} viewer={v} />
+      ))}
+    </div>
+  )
+}
+
+function ActiveViewerCard({ viewer }: { viewer: ActiveViewer }) {
+  const meta = ROLE_META[viewer.role]
+  const RoleIcon = meta.icon
+  const deptName = viewer.role === 'director' ? 'Все отделы' : DEPARTMENTS[viewer.deptId].name
 
   return (
     <motion.div
@@ -78,55 +252,37 @@ function EmployeeRow({ emp }: { emp: Employee }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
     >
-      <Card className="p-3 hover:shadow-sm transition-shadow border-slate-200">
-        <div className="flex items-center gap-3">
+      <Card className="p-3 border-slate-200 hover:shadow-sm transition-shadow">
+        <div className="flex items-center gap-2.5">
           <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${meta.color}`}>
             <RoleIcon className="w-4 h-4" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-slate-900 truncate">{emp.name}</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm font-semibold text-slate-900 truncate">{viewer.name}</span>
               <Badge variant="outline" className={`text-[10px] py-0 ${meta.color} border-transparent`}>
                 {meta.label}
               </Badge>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-              <Building2 className="w-3 h-3" />
-              {deptName}
-              <span className="text-slate-300 mx-1">·</span>
-              <span className="truncate">{emp.phone}</span>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+              <span className="flex items-center gap-0.5">
+                <Building2 className="w-3 h-3" />
+                {deptName}
+              </span>
+              <span className="text-slate-300">·</span>
+              <span className="flex items-center gap-0.5">
+                <Clock className="w-3 h-3" />
+                {relativeTime(viewer.lastSeenAt)}
+              </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">{meta.access}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+              ссылка …{viewer.shareTokenShort}
+            </p>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-[11px]"
-            onClick={() => previewAs(emp)}
-          >
-            <Eye className="w-3.5 h-3.5 mr-1" />
-            Превью
-          </Button>
-          <Button
-            size="sm"
-            className="h-8 text-[11px] bg-purple-600 hover:bg-purple-700"
-            onClick={handleCopyLink}
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 mr-1" />
-                Скопировано
-              </>
-            ) : (
-              <>
-                <Link2 className="w-3.5 h-3.5 mr-1" />
-                Поделиться
-              </>
-            )}
-          </Button>
+          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 shrink-0">
+            <Eye className="w-3 h-3 mr-1" />
+            активен
+          </Badge>
         </div>
       </Card>
     </motion.div>
@@ -139,8 +295,8 @@ function ShareLinksList() {
 
   if (shareLinks.length === 0) {
     return (
-      <div className="text-[11px] text-slate-400 py-4 text-center border border-dashed border-slate-200 rounded-lg">
-        Сгенерированные ссылки появятся здесь
+      <div className="text-[11px] text-slate-400 py-3 text-center border border-dashed border-slate-200 rounded-lg">
+        Созданные ссылки появятся здесь
       </div>
     )
   }
@@ -163,12 +319,17 @@ function ShareLinksList() {
               <Badge variant="outline" className={`text-[10px] py-0 ${meta.color} border-transparent`}>
                 {meta.label}
               </Badge>
-              <span className="text-xs font-medium text-slate-700 truncate flex-1">
-                {link.payload.name}
+              <span className="text-[10px] text-slate-500">
+                {link.payload.role === 'director' ? 'Все отделы' : DEPARTMENTS[link.payload.deptId].name}
               </span>
+              {link.payload.name && (
+                <span className="text-[10px] text-slate-400 truncate">
+                  · {link.payload.name}
+                </span>
+              )}
               <button
                 onClick={() => revokeShareLink(link.token)}
-                className="text-slate-400 hover:text-rose-600 transition-colors"
+                className="text-slate-400 hover:text-rose-600 transition-colors ml-auto"
                 aria-label="Отозвать ссылку"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -199,9 +360,27 @@ function ShareLinksList() {
 
 export function SharePanel() {
   const closeFlow = useDashboardStore((s) => s.closeFlow)
-  const [filter, setFilter] = useState<ViewerRole | 'all'>('all')
+  const activeViewers = useDashboardStore((s) => s.activeViewers)
+  const refreshActiveViewers = useDashboardStore((s) => s.refreshActiveViewers)
 
-  const filtered = EMPLOYEES.filter((e) => filter === 'all' || e.role === filter)
+  // Авто-refresh при открытии панели + подписка на storage-события
+  // (другая вкладка добавила зрителя — обновляем этот список)
+  useEffect(() => {
+    refreshActiveViewers()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'dashboard-active-viewers' || e.key === null) {
+        refreshActiveViewers()
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    // Polling каждые 2 секунды — на случай если storage-событие не сработало
+    // (например, в рамках одной вкладки)
+    const interval = setInterval(refreshActiveViewers, 2000)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      clearInterval(interval)
+    }
+  }, [refreshActiveViewers])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -218,65 +397,64 @@ export function SharePanel() {
             <div>
               <h3 className="font-semibold text-slate-900 text-base">Поделиться дашбордом</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Выберите сотрудника — посмотрите превью от его имени или сгенерируйте share-ссылку.
-                Права доступа применяются по роли (RLS).
+                Создавайте ссылки и отправляйте сотрудникам. Когда они перейдут по ссылке
+                и представятся — появятся в списке активных зрителей ниже.
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={closeFlow} className="h-8 w-8">
-            <X className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-[11px] text-slate-500"
+              onClick={refreshActiveViewers}
+              title="Обновить список"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={closeFlow} className="h-8 w-8">
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="overflow-y-auto flex-1">
-          {/* Инфо о RLS-практиках */}
-          <div className="px-5 pt-4">
-            <div className="rounded-lg bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-200 p-3">
-              <p className="text-[11px] text-purple-900 leading-relaxed">
-                <span className="font-semibold">Как это работает (по практикам Power BI / Tableau / Looker):</span>
-                <br />
-                • <span className="font-medium">RLS (Row-Level Security)</span> — данные фильтруются по роли зрителя:
-                сотрудник видит только себя, менеджер — свой отдел, директор — всё.
-                <br />
-                • <span className="font-medium">Share-ссылка</span> содержит встроенный контекст (роль + userId + отдел),
-                аналог signed-URL в Looker.
-                <br />
-                • <span className="font-medium">Превью «View As»</span> — админ может на лету переключаться в режим
-                просмотра от лица любого сотрудника (как в Power BI).
-              </p>
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          {/* Инфо про новую логику */}
+          <div className="rounded-lg bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-200 p-3">
+            <p className="text-[11px] text-purple-900 leading-relaxed">
+              <span className="font-semibold">Как это работает (инверсная логика):</span>
+              <br />
+              • Админ <span className="font-medium">не видит</span> заранее список сотрудников — только создаёт ссылки
+              с ролью и опционально именем.
+              <br />
+              • Зритель переходит по ссылке, и если имя не задано — сам представляется при первом открытии.
+              <br />
+              • После этого зритель автоматически появляется у админа в блоке «Активные зрители».
+              <br />
+              • RLS применяется по роли: директор видит всё, менеджер — свой отдел, сотрудник — только себя.
+            </p>
+          </div>
+
+          {/* 1. Создать ссылку */}
+          <CreateLinkForm />
+
+          {/* 2. Активные зрители — главное нововведение */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Eye className="w-4 h-4 text-emerald-600" />
+              <h4 className="text-sm font-semibold text-slate-900">Активные зрители</h4>
+              <Badge variant="outline" className="text-[10px] py-0 ml-auto">
+                обновляется автоматически
+              </Badge>
             </div>
+            <ActiveViewersList />
           </div>
 
-          {/* Фильтр по ролям */}
-          <div className="px-5 pt-4 pb-2 flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-slate-500 mr-1">Роль:</span>
-            {(['all', 'director', 'manager', 'employee'] as const).map((r) => (
-              <button
-                key={r}
-                onClick={() => setFilter(r)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                  filter === r
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {r === 'all' ? 'Все' : ROLE_META[r].label}
-              </button>
-            ))}
-          </div>
-
-          {/* Список сотрудников */}
-          <div className="px-5 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {filtered.map((emp) => (
-              <EmployeeRow key={emp.id} emp={emp} />
-            ))}
-          </div>
-
-          {/* История share-ссылок */}
-          <div className="px-5 pb-5 border-t border-slate-100 pt-4">
+          {/* 3. Список созданных ссылок */}
+          <div className="border-t border-slate-100 pt-4">
             <div className="flex items-center gap-2 mb-2">
               <Link2 className="w-4 h-4 text-slate-500" />
-              <h4 className="text-sm font-semibold text-slate-900">Активные share-ссылки</h4>
+              <h4 className="text-sm font-semibold text-slate-900">Все созданные ссылки</h4>
             </div>
             <ShareLinksList />
           </div>
