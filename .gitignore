@@ -52,3 +52,11 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Local-only artifacts and sensitive data
+/upload/
+/download/
+/scripts-local/
+.env.local
+.env.*.local
+.git-credentials
