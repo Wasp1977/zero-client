@@ -17,6 +17,48 @@ export type WidgetId =
 
 export type WidgetKind = 'synthetic' | 'real'
 
+export type ViewerRole = 'admin' | 'director' | 'manager' | 'employee'
+
+export type DepartmentId = 'sales' | 'support' | 'all'
+
+export interface Department {
+  id: DepartmentId
+  name: string
+}
+
+export const DEPARTMENTS: Record<DepartmentId, Department> = {
+  sales: { id: 'sales', name: 'Отдел продаж' },
+  support: { id: 'support', name: 'Отдел поддержки' },
+  all: { id: 'all', name: 'Все отделы' },
+}
+
+export interface Employee {
+  id: string
+  name: string
+  role: Exclude<ViewerRole, 'admin'>
+  deptId: Exclude<DepartmentId, 'all'>
+  phone?: string
+}
+
+// Тестовый список сотрудников компании (для прототипа)
+export const EMPLOYEES: Employee[] = [
+  { id: 'u-sokolova', name: 'Анна Соколова', role: 'director', deptId: 'all', phone: '+7 (900) 111-22-33' },
+  { id: 'u-volkov', name: 'Игорь Волков', role: 'manager', deptId: 'sales', phone: '+7 (901) 222-33-44' },
+  { id: 'u-lebedeva', name: 'Мария Лебедева', role: 'manager', deptId: 'support', phone: '+7 (902) 333-44-55' },
+  { id: 'u-orlov', name: 'Алексей Орлов', role: 'employee', deptId: 'sales', phone: '+7 (903) 444-55-66' },
+  { id: 'u-zaytseva', name: 'Елена Зайцева', role: 'employee', deptId: 'sales', phone: '+7 (904) 555-66-77' },
+  { id: 'u-kuznetsov', name: 'Дмитрий Кузнецов', role: 'employee', deptId: 'support', phone: '+7 (905) 666-77-88' },
+]
+
+export interface Viewer {
+  role: ViewerRole
+  userId: string        // 'admin' или id сотрудника из EMPLOYEES
+  name: string
+  deptId: DepartmentId  // 'all' для director/admin
+  isShared: boolean     // true — открыто по share-ссылке (read-only)
+  shareToken?: string   // исходный токен, если isShared
+}
+
 export interface WidgetMeta {
   id: WidgetId
   title: string
@@ -246,4 +288,95 @@ export interface ScenarioEvent {
   step: ScenarioStep
   message: string
   detail?: string
+}
+
+// ===========================================================================
+//  RLS: фильтрация данных по роли зрителя
+// ===========================================================================
+// В реальной системе эта фильтрация выполнялась бы на бэке. В прототипе — на клиенте.
+// Логика:
+//   - admin    → видит ВСЕ данные компании (полный агрегат)
+//   - director → видит ВСЕ данные (как админ по данным, но без прав управления)
+//   - manager  → видит только свой отдел (агрегат по отделу)
+//   - employee → видит только себя (свои личные показатели)
+
+export interface DataScope {
+  scope: 'company' | 'department' | 'personal'
+  scopeLabel: string
+  multiplier: number // коэффициент относительно company-данных (для демо)
+}
+
+export function getDataScope(viewer: Viewer | null): DataScope {
+  if (!viewer) {
+    return { scope: 'company', scopeLabel: 'Все данные', multiplier: 1 }
+  }
+  switch (viewer.role) {
+    case 'admin':
+      return { scope: 'company', scopeLabel: 'Все данные (админ)', multiplier: 1 }
+    case 'director':
+      return { scope: 'company', scopeLabel: 'Все отделы и сотрудники', multiplier: 1 }
+    case 'manager':
+      return {
+        scope: 'department',
+        scopeLabel: `Только отдел: ${DEPARTMENTS[viewer.deptId].name}`,
+        multiplier: 0.45, // менеджер видит ~45% от общего (свой отдел)
+      }
+    case 'employee':
+      return {
+        scope: 'personal',
+        scopeLabel: `Только мои данные (${viewer.name})`,
+        multiplier: 0.12, // сотрудник видит ~12% (только себя)
+      }
+  }
+}
+
+// Применяет RLS-масштабирование к данным виджета (демо-имитация)
+export function applyRls<T extends Record<string, any>>(data: T, scope: DataScope): T {
+  const m = scope.multiplier
+  const scaled: Record<string, any> = {}
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof v === 'number') {
+      scaled[k] = Math.max(0, Math.round(v * m))
+    } else if (Array.isArray(v) && v.every((x) => typeof x === 'object' && x !== null)) {
+      scaled[k] = v.map((item: any) => {
+        if (typeof item.value === 'number') return { ...item, value: Math.max(0, Math.round(item.value * m)) }
+        if (typeof item.count === 'number') return { ...item, count: Math.max(0, Math.round(item.count * m)) }
+        return item
+      })
+    } else {
+      scaled[k] = v
+    }
+  }
+  return scaled as T
+}
+
+// ===========================================================================
+//  Share-token encode/decode (base64-URL-safe, для прототипа)
+// ===========================================================================
+// В проде — подписанный JWT с exp; в прототипе — простой base64-json.
+
+export interface SharePayload {
+  role: Exclude<ViewerRole, 'admin'>
+  userId: string
+  name: string
+  deptId: DepartmentId
+  iat: number
+}
+
+export function encodeShareToken(payload: SharePayload): string {
+  const json = JSON.stringify(payload)
+  // base64url
+  const b64 = btoa(unescape(encodeURIComponent(json)))
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+export function decodeShareToken(token: string): SharePayload | null {
+  try {
+    const b64 = token.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+    const json = decodeURIComponent(escape(atob(padded)))
+    return JSON.parse(json) as SharePayload
+  } catch {
+    return null
+  }
 }

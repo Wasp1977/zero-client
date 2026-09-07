@@ -44,6 +44,7 @@ function ServiceCard({ id }: { id: ServiceId }) {
   const status = useDashboardStore((s) => s.serviceStatuses[id])
   const requestAuth = useDashboardStore((s) => s.requestAuth)
   const requestPurchase = useDashboardStore((s) => s.requestPurchase)
+  const isReadOnly = useDashboardStore((s) => s.viewer !== null)
 
   return (
     <Card className="p-3 border-slate-200">
@@ -59,7 +60,7 @@ function ServiceCard({ id }: { id: ServiceId }) {
       <div className="mb-2">
         <StatusBadge status={status} />
       </div>
-      {status === 'disconnected' ? (
+      {status === 'disconnected' && !isReadOnly ? (
         <div className="space-y-1.5">
           {/* Primary: подключение (вход со своими логином/паролем) */}
           <Button
@@ -79,6 +80,10 @@ function ServiceCard({ id }: { id: ServiceId }) {
             <ShoppingCart className="w-3 h-3" />
             Нет аккаунта? Купить
           </button>
+        </div>
+      ) : status === 'disconnected' && isReadOnly ? (
+        <div className="text-[10px] text-slate-400 text-center py-1">
+          Подключение недоступно в режиме просмотра
         </div>
       ) : (
         <div className="text-[11px] text-emerald-700 font-medium text-center py-1">

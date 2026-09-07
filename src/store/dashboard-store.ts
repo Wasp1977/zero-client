@@ -9,17 +9,25 @@ import {
   ScenarioEvent,
   SERVICES,
   WIDGETS,
+  Viewer,
+  Employee,
+  ViewerRole,
+  DepartmentId,
+  SharePayload,
+  encodeShareToken,
+  decodeShareToken,
+  DEPARTMENTS,
 } from '@/lib/dashboard/types'
 
 interface DashboardState {
   // Текущий шаг сценария (для индикатора прогресса)
   currentStep: ScenarioStep
 
-  // Статус входа пользователя
+  // Статус входа пользователя (админа)
   isLoggedIn: boolean
   userName: string
 
-  // Подключённые на дашборд виджеты (id виджетов, которые пользователь добавил)
+  // Подключённые на дашборд виджеты
   addedWidgets: WidgetId[]
 
   // Статусы сервисов
@@ -32,9 +40,20 @@ interface DashboardState {
     | { type: 'purchase'; service: ServiceId }
     | { type: 'reminders' }
     | { type: 'catalog' }
+    | { type: 'share' }
 
   // Лог сценария
   scenarioLog: ScenarioEvent[]
+
+  // ===== Роли и шаринг =====
+  // Текущий «зритель» дашборда:
+  //  - null = админ смотрит «как админ» (полные права)
+  //  - иначе — это либо admin-превью как сотрудник (previewAs),
+  //    либо viewer по share-ссылке (isShared=true → read-only режим)
+  viewer: Viewer | null
+
+  // Сгенерированные share-ссылки (история) — для отображения в админке
+  shareLinks: Array<{ token: string; payload: SharePayload; createdAt: number }>
 
   // Действия
   login: (name: string) => void
@@ -48,6 +67,15 @@ interface DashboardState {
   completePurchase: (service: ServiceId) => void
   completeAuth: (service: ServiceId, success: boolean) => void
   logEvent: (step: ScenarioStep, message: string, detail?: string) => void
+
+  // ===== Действия для ролей/шаринга =====
+  openSharePanel: () => void
+  previewAs: (employee: Employee) => void
+  exitPreview: () => void
+  generateShareLink: (employee: Employee) => string
+  revokeShareLink: (token: string) => void
+  loadFromShareToken: (token: string) => boolean
+
   reset: () => void
 }
 
@@ -64,6 +92,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   serviceStatuses: { ...initialServiceStatuses },
   activeFlow: { type: 'none' },
   scenarioLog: [],
+  viewer: null,
+  shareLinks: [],
 
   login: (name: string) => {
     set({
@@ -201,6 +231,99 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }))
   },
 
+  // ===== Роли и шаринг =====
+  openSharePanel: () => {
+    set({ activeFlow: { type: 'share' } })
+    get().logEvent(
+      'widget-on-dashboard',
+      'Открыта панель «Поделиться дашбордом»',
+      'Админ может выбрать сотрудника, посмотреть превью от его имени или сгенерировать share-ссылку.',
+    )
+  },
+
+  previewAs: (employee: Employee) => {
+    const viewer: Viewer = {
+      role: employee.role,
+      userId: employee.id,
+      name: employee.name,
+      deptId: employee.deptId,
+      isShared: false,
+    }
+    set({ viewer, activeFlow: { type: 'none' } })
+    const roleLabel = ROLE_LABELS[employee.role]
+    get().logEvent(
+      'widget-on-dashboard',
+      `Превью как ${roleLabel}: ${employee.name}`,
+      `Применён RLS: ${employee.role === 'director' ? 'видит все отделы' : employee.role === 'manager' ? `видит отдел «${DEPARTMENTS[employee.deptId].name}»` : 'видит только свои данные'}.`,
+    )
+  },
+
+  exitPreview: () => {
+    set({ viewer: null })
+    get().logEvent(
+      'widget-on-dashboard',
+      'Выход из режима превью — возврат к виду админа',
+      'Админ снова видит все данные с полными правами.',
+    )
+  },
+
+  generateShareLink: (employee: Employee) => {
+    const payload: SharePayload = {
+      role: employee.role,
+      userId: employee.id,
+      name: employee.name,
+      deptId: employee.deptId,
+      iat: Date.now(),
+    }
+    const token = encodeShareToken(payload)
+    set((s) => ({
+      shareLinks: [
+        { token, payload, createdAt: payload.iat },
+        ...s.shareLinks,
+      ],
+    }))
+    get().logEvent(
+      'widget-on-dashboard',
+      `Сгенерирована share-ссылка для ${employee.name} (${ROLE_LABELS[employee.role]})`,
+      `Ссылка содержит встроенный контекст: роль + отдел + userId. RLS будет применён при открытии.`,
+    )
+    return token
+  },
+
+  revokeShareLink: (token: string) => {
+    set((s) => ({ shareLinks: s.shareLinks.filter((l) => l.token !== token) }))
+    get().logEvent(
+      'widget-on-dashboard',
+      'Share-ссылка отозвана',
+      'Доступ по этой ссылке больше недействителен.',
+    )
+  },
+
+  loadFromShareToken: (token: string) => {
+    const payload = decodeShareToken(token)
+    if (!payload) return false
+    const viewer: Viewer = {
+      role: payload.role,
+      userId: payload.userId,
+      name: payload.name,
+      deptId: payload.deptId,
+      isShared: true,
+      shareToken: token,
+    }
+    set({
+      viewer,
+      isLoggedIn: true,
+      userName: payload.name,
+      currentStep: 'widget-on-dashboard',
+      addedWidgets: ['oats-calls', 'beeline-leads', 'analytics'],
+      serviceStatuses: {
+        oats: 'authorized',
+        'beeline-crm': 'authorized',
+      },
+    })
+    return true
+  },
+
   reset: () => {
     set({
       currentStep: 'login',
@@ -210,6 +333,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       serviceStatuses: { ...initialServiceStatuses },
       activeFlow: { type: 'none' },
       scenarioLog: [],
+      viewer: null,
+      shareLinks: [],
     })
   },
 }))
+
+const ROLE_LABELS: Record<ViewerRole, string> = {
+  admin: 'админ',
+  director: 'директор',
+  manager: 'менеджер',
+  employee: 'сотрудник',
+}

@@ -34,6 +34,8 @@ import {
   REAL_DATA,
   SERVICES,
   ServiceId,
+  getDataScope,
+  applyRls,
 } from '@/lib/dashboard/types'
 import { useDashboardStore } from '@/store/dashboard-store'
 
@@ -145,9 +147,17 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
   const serviceStatus = useDashboardStore((s) =>
     widget.service !== 'self' ? s.serviceStatuses[widget.service as ServiceId] : 'authorized',
   )
+  const viewer = useDashboardStore((s) => s.viewer)
+
+  // В режиме превью/share — админ не может редактировать виджеты
+  const isReadOnly = viewer !== null
 
   const isReal = serviceStatus === 'authorized'
-  const data = isReal ? REAL_DATA[id] : SYNTHETIC_DATA[id]
+  const rawData = isReal ? REAL_DATA[id] : SYNTHETIC_DATA[id]
+
+  // Применяем RLS-фильтрацию по роли зрителя
+  const scope = getDataScope(viewer)
+  const data = applyRls(rawData, scope)
 
   const handleConnect = () => {
     if (widget.service === 'self') return
@@ -167,13 +177,15 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
     >
       <Card className="p-4 relative group hover:shadow-md transition-shadow border-slate-200 h-full flex flex-col">
-        <button
-          onClick={() => removeWidget(id)}
-          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-md hover:bg-slate-100 flex items-center justify-center"
-          aria-label="Удалить виджет"
-        >
-          <X className="w-3.5 h-3.5 text-slate-500" />
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={() => removeWidget(id)}
+            className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-md hover:bg-slate-100 flex items-center justify-center"
+            aria-label="Удалить виджет"
+          >
+            <X className="w-3.5 h-3.5 text-slate-500" />
+          </button>
+        )}
 
         <div className="flex items-center gap-2 mb-3">
           <div
@@ -183,9 +195,9 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
           >
             <Icon className={`w-4 h-4 ${isReal ? 'text-emerald-600' : 'text-orange-600'}`} />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-slate-900 leading-tight">{widget.title}</h3>
-            <p className="text-[10px] text-slate-400 leading-tight">{widget.description}</p>
+            <p className="text-[10px] text-slate-400 leading-tight truncate">{widget.description}</p>
           </div>
           <Badge
             variant="outline"
@@ -198,6 +210,12 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
             {isReal ? 'реальные' : 'синтетика'}
           </Badge>
         </div>
+
+        {viewer && (
+          <div className="mb-2 text-[10px] text-slate-500 bg-slate-50 rounded px-1.5 py-0.5 leading-snug truncate">
+            {scope.scopeLabel}
+          </div>
+        )}
 
         <div className="flex-1 space-y-2">
           {id === 'oats-calls' || id === 'beeline-leads' ? (
@@ -298,7 +316,7 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
           ) : null}
         </div>
 
-        {widget.service !== 'self' && (
+        {widget.service !== 'self' && !isReadOnly && (
           <div className="mt-3">
             {isReal ? (
               <AuthorizedBanner service={widget.service as ServiceId} />
@@ -309,6 +327,11 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
                 onPurchase={handlePurchase}
               />
             )}
+          </div>
+        )}
+        {widget.service !== 'self' && isReadOnly && !isReal && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] text-slate-500 leading-snug">
+            В режиме просмотра действия с сервисом недоступны.
           </div>
         )}
       </Card>
