@@ -29,6 +29,7 @@ import {
   PlusCircle,
   UserPlus,
   RefreshCw,
+  Phone,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useDashboardStore } from '@/store/dashboard-store'
@@ -92,8 +93,17 @@ function CreateLinkForm() {
     setTimeout(() => setCopied(false), 1800)
   }
 
-  // Для director — отдел не нужен
-  const showDept = role !== 'director'
+  // Для director (все отделы) и employee (только свои данные) — отдел не нужен
+  const showDept = role === 'manager'
+
+  // При смене роли на director/employee сбрасываем deptId на дефолт (не критично,
+  // т.к. он не используется в этих ролях, но поддерживает консистентность)
+  const handleRoleChange = (v: string) => {
+    const newRole = v as Role
+    setRole(newRole)
+    if (newRole === 'director') setDeptId('all')
+    else if (newRole === 'employee') setDeptId('sales') // дефолт, не используется в RLS
+  }
 
   return (
     <Card className="p-4 border-slate-200">
@@ -105,14 +115,14 @@ function CreateLinkForm() {
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label className="text-xs text-slate-600">Роль зрителя</Label>
-          <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+          <Select value={role} onValueChange={handleRoleChange}>
             <SelectTrigger className="h-9 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="director">Директор — видит все отделы</SelectItem>
               <SelectItem value="manager">Менеджер — видит свой отдел</SelectItem>
-              <SelectItem value="employee">Сотрудник — видит только себя</SelectItem>
+              <SelectItem value="employee">Сотрудник — видит только свои данные</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -123,7 +133,6 @@ function CreateLinkForm() {
             <Select
               value={deptId}
               onValueChange={(v) => setDeptId(v as DepartmentId)}
-              disabled={role === 'director'}
             >
               <SelectTrigger className="h-9 text-sm">
                 <SelectValue />
@@ -136,19 +145,31 @@ function CreateLinkForm() {
           </div>
         )}
 
+        {role === 'employee' && (
+          <div className="rounded-md bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-[10px] text-slate-500 leading-snug">
+            Для роли «Сотрудник» отдел не нужен — зритель видит только свои личные данные.
+          </div>
+        )}
+
+        {role === 'director' && (
+          <div className="rounded-md bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-[10px] text-slate-500 leading-snug">
+            Для роли «Директор» доступны все отделы и сотрудники компании.
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <Label className="text-xs text-slate-600">
             Имя зрителя <span className="text-slate-400">(необязательно)</span>
           </Label>
           <Input
-            placeholder="Оставьте пустым — зритель сам представится при открытии"
+            placeholder="Зритель сам представится при открытии ссылки"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="h-9 text-sm"
           />
           <p className="text-[10px] text-slate-400 leading-snug">
-            Если имя не задано — при первом открытии ссылки зритель увидит экран
-            «Представьтесь, пожалуйста».
+            При открытии ссылки зритель обязательно вводит свой номер телефона (для логина),
+            а имя — по желанию. У админа будет виден телефон + имя, или только телефон.
           </p>
         </div>
 
@@ -243,7 +264,12 @@ function ActiveViewersList() {
 function ActiveViewerCard({ viewer }: { viewer: ActiveViewer }) {
   const meta = ROLE_META[viewer.role]
   const RoleIcon = meta.icon
-  const deptName = viewer.role === 'director' ? 'Все отделы' : DEPARTMENTS[viewer.deptId].name
+  const deptName = viewer.role === 'director'
+    ? 'Все отделы'
+    : viewer.role === 'employee'
+      ? 'Только свои данные'
+      : DEPARTMENTS[viewer.deptId].name
+  const displayName = viewer.name?.trim() || viewer.phone
 
   return (
     <motion.div
@@ -259,10 +285,22 @@ function ActiveViewerCard({ viewer }: { viewer: ActiveViewer }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-sm font-semibold text-slate-900 truncate">{viewer.name}</span>
+              <span className="text-sm font-semibold text-slate-900 truncate">{displayName}</span>
               <Badge variant="outline" className={`text-[10px] py-0 ${meta.color} border-transparent`}>
                 {meta.label}
               </Badge>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+              <span className="flex items-center gap-0.5">
+                <Phone className="w-3 h-3" />
+                {viewer.phone}
+              </span>
+              {viewer.name?.trim() && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="truncate">{viewer.name}</span>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
               <span className="flex items-center gap-0.5">
@@ -320,7 +358,11 @@ function ShareLinksList() {
                 {meta.label}
               </Badge>
               <span className="text-[10px] text-slate-500">
-                {link.payload.role === 'director' ? 'Все отделы' : DEPARTMENTS[link.payload.deptId].name}
+                {link.payload.role === 'director'
+                  ? 'Все отделы'
+                  : link.payload.role === 'employee'
+                    ? 'Только свои данные'
+                    : DEPARTMENTS[link.payload.deptId].name}
               </span>
               {link.payload.name && (
                 <span className="text-[10px] text-slate-400 truncate">
@@ -422,16 +464,17 @@ export function SharePanel() {
           {/* Инфо про новую логику */}
           <div className="rounded-lg bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-200 p-3">
             <p className="text-[11px] text-purple-900 leading-relaxed">
-              <span className="font-semibold">Как это работает (инверсная логика):</span>
+              <span className="font-semibold">Как это работает:</span>
               <br />
               • Админ <span className="font-medium">не видит</span> заранее список сотрудников — только создаёт ссылки
-              с ролью и опционально именем.
+              с ролью (для сотрудника отдел не нужен — он видит только свои данные).
               <br />
-              • Зритель переходит по ссылке, и если имя не задано — сам представляется при первом открытии.
+              • Зритель открывает ссылку и обязательно вводит <span className="font-medium">номер телефона</span> (для логина),
+              имя — по желанию.
               <br />
-              • После этого зритель автоматически появляется у админа в блоке «Активные зрители».
+              • У админа зритель автоматически появляется в блоке «Активные зрители» — с телефоном (и именем, если указал).
               <br />
-              • RLS применяется по роли: директор видит всё, менеджер — свой отдел, сотрудник — только себя.
+              • Зрители могут добавлять виджеты на дашборд, но данные фильтруются по их роли (RLS).
             </p>
           </div>
 

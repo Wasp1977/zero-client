@@ -54,6 +54,7 @@ export interface Viewer {
   role: ViewerRole
   userId: string        // 'admin' или id сотрудника из EMPLOYEES
   name: string
+  phone?: string        // для share-link зрителей — их телефон (для логина)
   deptId: DepartmentId  // 'all' для director/admin
   isShared: boolean     // true — открыто по share-ссылке (read-only)
   shareToken?: string   // исходный токен, если isShared
@@ -373,7 +374,8 @@ export interface ActiveViewer {
   // Данные зрителя
   role: Exclude<ViewerRole, 'admin'>
   deptId: DepartmentId
-  name: string
+  name?: string           // имя — опционально, зритель может не представиться
+  phone: string           // телефон — обязательный, используется как логин
   // Когда впервые открыл
   firstSeenAt: number
   // Когда последний раз был активен

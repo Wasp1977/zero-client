@@ -18,8 +18,6 @@ import { LoginScreen } from '@/components/dashboard/login-screen'
 import { WidgetCatalog } from '@/components/dashboard/widget-catalog'
 import { DashboardWidget } from '@/components/dashboard/dashboard-widget'
 import { FlowModals } from '@/components/dashboard/flow-modals'
-import { ServicesPanel } from '@/components/dashboard/services-panel'
-import { ScenarioLog } from '@/components/dashboard/scenario-log'
 import { SharePanel } from '@/components/dashboard/share-panel'
 import { ViewerBanner } from '@/components/dashboard/viewer-banner'
 import { NamePromptScreen } from '@/components/dashboard/name-prompt-screen'
@@ -48,7 +46,9 @@ export function Dashboard() {
     const params = new URLSearchParams(window.location.search)
     const token = params.get('share')
     if (token) {
-      loadFromShareToken(token)
+      // На этом этапе телефона ещё нет — просто помечаем pendingShareToken,
+      // дальше NamePromptScreen запросит телефон + имя у зрителя
+      loadFromShareToken(token, '')
       // Чистим URL — чтобы при reload не было «режима просмотра»
       const url = new URL(window.location.href)
       url.searchParams.delete('share')
@@ -56,7 +56,7 @@ export function Dashboard() {
     }
   }, [loadFromShareToken])
 
-  // Если ждём имя от зрителя — показываем экран ввода имени
+  // Если ждём ввод телефона/имени от зрителя — показываем экран входа
   if (pendingShareToken) {
     return <NamePromptScreen />
   }
@@ -65,7 +65,14 @@ export function Dashboard() {
     return <LoginScreen />
   }
 
-  const isReadOnly = viewer !== null
+  // isSharedViewer — открыто по share-ссылке. Может добавлять виджеты, RLS работает.
+  // isAdminPreview — админ смотрит «как зритель». Только превью, без прав.
+  const isSharedViewer = viewer !== null && viewer.isShared
+  const isAdminPreview = viewer !== null && !viewer.isShared
+  // Скрываем кнопку «Поделиться» и для share-зрителя, и в режиме превью
+  const canShare = viewer === null
+  // Добавлять/удалять виджеты может админ и share-зритель (но не превью)
+  const canEditWidgets = !isAdminPreview
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -95,15 +102,16 @@ export function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Кнопка "Поделиться" доступна только админу (когда нет viewer) */}
-            {!isReadOnly && (
+            {/* Кнопка "Поделиться" доступна только админу */}
+            {canShare && (
               <Button onClick={openSharePanel} variant="outline" size="sm" className="h-9 border-purple-200 text-purple-700 hover:bg-purple-50">
                 <Share2 className="w-4 h-4 mr-1" />
                 <span className="hidden sm:inline">Поделиться</span>
                 <span className="sm:hidden">Доступ</span>
               </Button>
             )}
-            {!isReadOnly && (
+            {/* Добавлять виджеты может админ и share-зритель */}
+            {canEditWidgets && (
               <Button onClick={openCatalog} size="sm" className="h-9">
                 <Plus className="w-4 h-4 mr-1" />
                 <span className="hidden sm:inline">Добавить виджет</span>
@@ -123,47 +131,38 @@ export function Dashboard() {
 
       {/* Main */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-          {/* Center — widgets area */}
-          <div className="space-y-4 min-w-0">
-            {/* Empty state */}
-            {addedWidgets.length === 0 ? (
-              <EmptyDashboard onAdd={openCatalog} isReadOnly={isReadOnly} />
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4 text-slate-500" />
-                    <h2 className="text-sm font-semibold text-slate-900">
-                      Виджеты на дашборде
-                    </h2>
-                    <Badge variant="outline" className="text-[10px] py-0">
-                      {addedWidgets.length}
-                    </Badge>
-                  </div>
-                  {!isReadOnly && (
-                    <Button variant="ghost" size="sm" onClick={openCatalog} className="h-8 text-xs">
-                      <Plus className="w-3.5 h-3.5 mr-1" />
-                      Ещё
-                    </Button>
-                  )}
+        <div className="space-y-4 min-w-0">
+          {/* Empty state */}
+          {addedWidgets.length === 0 ? (
+            <EmptyDashboard onAdd={openCatalog} canEdit={canEditWidgets} />
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <LayoutGrid className="w-4 h-4 text-slate-500" />
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Виджеты на дашборде
+                  </h2>
+                  <Badge variant="outline" className="text-[10px] py-0">
+                    {addedWidgets.length}
+                  </Badge>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  <AnimatePresence mode="popLayout">
-                    {addedWidgets.map((id) => (
-                      <DashboardWidget key={id} id={id} />
-                    ))}
-                  </AnimatePresence>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Right — services + log */}
-          <div className="space-y-4 lg:sticky lg:top-[88px] lg:self-start">
-            <ServicesPanel />
-            <ScenarioLog />
-          </div>
+                {canEditWidgets && (
+                  <Button variant="ghost" size="sm" onClick={openCatalog} className="h-8 text-xs">
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Ещё
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                <AnimatePresence mode="popLayout">
+                  {addedWidgets.map((id) => (
+                    <DashboardWidget key={id} id={id} />
+                  ))}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
         </div>
       </main>
 
@@ -171,8 +170,8 @@ export function Dashboard() {
       <footer className="mt-auto border-t border-slate-200 bg-white">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <p className="text-[11px] text-slate-500">
-            Интерактивный прототип сценария: вход → виджеты → синтетика/реальные данные →
-            покупка/подключение сервисов + RLS по ролям (share-ссылки, превью «View As»).
+            Интерактивный прототип: вход → виджеты → синтетика/реальные данные →
+            share-ссылки + RLS по ролям (сотрудник / менеджер / директор).
           </p>
           <div className="flex items-center gap-3 text-[11px] text-slate-500">
             <span className="flex items-center gap-1">
@@ -201,7 +200,7 @@ export function Dashboard() {
   )
 }
 
-function EmptyDashboard({ onAdd, isReadOnly }: { onAdd: () => void; isReadOnly: boolean }) {
+function EmptyDashboard({ onAdd, canEdit }: { onAdd: () => void; canEdit: boolean }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -216,10 +215,10 @@ function EmptyDashboard({ onAdd, isReadOnly }: { onAdd: () => void; isReadOnly: 
       </h3>
       <p className="text-sm text-slate-500 max-w-md mx-auto mb-5 leading-relaxed">
         Состояние «без виджетов». Подключите любые виджеты от любых сервисов —
-        ОАТС, билайнСРМ или собственные. Если сервис ещё не подключён — покажем
-        синтетические данные и предложим вход со своими логином/паролем (fallback — покупка).
+        ОАТС, билайнСРМ или собственные. Данные в виджетах будут отфильтрованы
+        по вашей роли (RLS).
       </p>
-      {!isReadOnly && (
+      {canEdit && (
         <Button onClick={onAdd} size="lg">
           <Plus className="w-4 h-4 mr-2" />
           Открыть каталог виджетов

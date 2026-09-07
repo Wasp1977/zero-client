@@ -6,6 +6,7 @@ import {
   Eye,
   X,
   Share2,
+  Phone,
   ShieldCheck,
   ShieldAlert,
 } from 'lucide-react'
@@ -58,10 +59,19 @@ export function ViewerBanner() {
                       viewer.isShared ? 'text-amber-900' : 'text-sky-900'
                     }`}
                   >
-                    {viewer.isShared ? 'Режим просмотра по share-ссылке' : 'Превью как зритель'}
+                    {viewer.isShared ? 'Вход по share-ссылке' : 'Превью как зритель'}
                   </span>
                   <span className="text-[11px] text-slate-600">
                     <span className="font-semibold">{viewer.name}</span>
+                    {viewer.phone && viewer.name !== viewer.phone && (
+                      <>
+                        {' · '}
+                        <span className="inline-flex items-center gap-0.5">
+                          <Phone className="w-3 h-3" />
+                          {viewer.phone}
+                        </span>
+                      </>
+                    )}
                     {' · '}
                     {ROLE_LABELS[viewer.role]}
                     {' · '}
@@ -70,7 +80,7 @@ export function ViewerBanner() {
                   {viewer.isShared && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
                       <ShieldAlert className="w-3 h-3" />
-                      read-only
+                      RLS активен
                     </span>
                   )}
                   {!viewer.isShared && (

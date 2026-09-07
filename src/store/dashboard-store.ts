@@ -84,7 +84,7 @@ interface DashboardState {
   exitPreview: () => void
   generateShareLink: (role: Exclude<ViewerRole, 'admin'>, deptId: DepartmentId, name?: string) => string
   revokeShareLink: (token: string) => void
-  loadFromShareToken: (token: string, name?: string) => 'ok' | 'need-name'
+  loadFromShareToken: (token: string, phone: string, name?: string) => 'ok' | 'need-info'
   cancelPendingShare: () => void
   clearActiveViewers: () => void
   refreshActiveViewers: () => void
@@ -313,21 +313,24 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     )
   },
 
-  loadFromShareToken: (token: string, name?: string) => {
+  loadFromShareToken: (token: string, phone: string, name?: string) => {
     const payload = decodeShareToken(token)
     if (!payload) return 'ok' as const // невалидный токен — игнорируем
 
-    // Если в токене нет имени и внешнее имя тоже не передано — нужно спросить
-    const finalName = payload.name?.trim() || name?.trim()
-    if (!finalName) {
+    const finalPhone = phone.trim()
+    if (!finalPhone) {
       set({ pendingShareToken: token })
-      return 'need-name' as const
+      return 'need-info' as const
     }
+
+    // Если в токене есть имя — используем его, иначе из аргумента, иначе пусто
+    const finalName = payload.name?.trim() || name?.trim() || ''
 
     const viewer: Viewer = {
       role: payload.role,
       userId: `share-${token.slice(-8)}`,
-      name: finalName,
+      name: finalName || finalPhone,  // если имени нет — показываем телефон как имя
+      phone: finalPhone,
       deptId: payload.deptId,
       isShared: true,
       shareToken: token,
@@ -337,12 +340,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     const now = Date.now()
     set((s) => {
       const existing = s.activeViewers.find(
-        (v) => v.shareTokenShort === token.slice(-8) && v.name === finalName,
+        (v) => v.shareTokenShort === token.slice(-8) && v.phone === finalPhone,
       )
       let activeViewers: ActiveViewer[]
       if (existing) {
         activeViewers = s.activeViewers.map((v) =>
-          v === existing ? { ...v, lastSeenAt: now } : v,
+          v === existing ? { ...v, lastSeenAt: now, name: finalName || v.name } : v,
         )
       } else {
         const newViewer: ActiveViewer = {
@@ -350,7 +353,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           shareTokenShort: token.slice(-8),
           role: payload.role,
           deptId: payload.deptId,
-          name: finalName,
+          name: finalName || undefined,
+          phone: finalPhone,
           firstSeenAt: now,
           lastSeenAt: now,
         }
@@ -360,7 +364,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       return {
         viewer,
         isLoggedIn: true,
-        userName: finalName,
+        userName: finalName || finalPhone,
         currentStep: 'widget-on-dashboard',
         addedWidgets: ['oats-calls', 'beeline-leads', 'analytics'],
         serviceStatuses: {

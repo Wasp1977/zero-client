@@ -8,31 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { LayoutDashboard, LogIn, ArrowRight, Phone } from 'lucide-react'
 import { useDashboardStore } from '@/store/dashboard-store'
-
-/**
- * Преобразует произвольный ввод в маску российского номера: +7 (XXX) XXX-XX-XX
- * Возвращает { value, digits } — отформатированную строку и только цифры.
- */
-function formatPhone(input: string): { value: string; digits: string } {
-  // Берём только цифры, первый символ нормализуем к 7
-  let digits = input.replace(/\D/g, '')
-  if (digits.length === 0) return { value: '', digits: '' }
-  // Если начинается на 8 — заменяем на 7
-  if (digits[0] === '8') digits = '7' + digits.slice(1)
-  // Если не начинается на 7 — добавляем 7 в начало
-  if (digits[0] !== '7') digits = '7' + digits
-  // Ограничиваем 11 цифрами
-  digits = digits.slice(0, 11)
-
-  // Формируем маску
-  let value = '+7'
-  const rest = digits.slice(1) // без первой семёрки
-  if (rest.length > 0) value += ' (' + rest.slice(0, 3)
-  if (rest.length >= 3) value += ') ' + rest.slice(3, 6)
-  if (rest.length >= 6) value += '-' + rest.slice(6, 8)
-  if (rest.length >= 8) value += '-' + rest.slice(8, 10)
-  return { value, digits }
-}
+import { formatPhone, isValidPhone } from '@/lib/dashboard/phone'
 
 export function LoginScreen() {
   const login = useDashboardStore((s) => s.login)
@@ -50,8 +26,7 @@ export function LoginScreen() {
   }
 
   // Номер валиден, если введено ровно 11 цифр (с кодом страны)
-  const digits = formatPhone(phone).digits
-  const isValid = digits.length === 11
+  const isValid = isValidPhone(phone)
   const showError = touched && !isValid && phone.length > 0
 
   const handleLogin = () => {

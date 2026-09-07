@@ -149,8 +149,10 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
   )
   const viewer = useDashboardStore((s) => s.viewer)
 
-  // В режиме превью/share — админ не может редактировать виджеты
-  const isReadOnly = viewer !== null
+  // isAdminPreview — админ смотрит «как зритель», только превью (нельзя редактировать).
+  // isSharedViewer — открыт по share-ссылке (можно добавлять/удалять виджеты, RLS активен).
+  const isAdminPreview = viewer !== null && !viewer.isShared
+  const isReadOnly = isAdminPreview
 
   const isReal = serviceStatus === 'authorized'
   const rawData = isReal ? REAL_DATA[id] : SYNTHETIC_DATA[id]
@@ -316,7 +318,9 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
           ) : null}
         </div>
 
-        {widget.service !== 'self' && !isReadOnly && (
+        {/* CTA сервисов (Подключить/Купить) — только для админа (viewer === null).
+            Для share-link зрителей сервисы уже авторизованы — показываем баннер «реальные данные». */}
+        {widget.service !== 'self' && viewer === null && (
           <div className="mt-3">
             {isReal ? (
               <AuthorizedBanner service={widget.service as ServiceId} />
@@ -329,9 +333,9 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
             )}
           </div>
         )}
-        {widget.service !== 'self' && isReadOnly && !isReal && (
-          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] text-slate-500 leading-snug">
-            В режиме просмотра действия с сервисом недоступны.
+        {widget.service !== 'self' && viewer !== null && isReal && (
+          <div className="mt-3">
+            <AuthorizedBanner service={widget.service as ServiceId} />
           </div>
         )}
       </Card>
