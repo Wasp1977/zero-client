@@ -14,6 +14,7 @@ export type WidgetId =
   | 'beeline-deals'
   | 'analytics'
   | 'tasks'
+  | 'updates'
 
 export type WidgetKind = 'synthetic' | 'real'
 
@@ -160,6 +161,13 @@ export const WIDGETS: Record<WidgetId, WidgetMeta> = {
     description: 'Личные задачи пользователя',
     icon: 'check-square',
   },
+  updates: {
+    id: 'updates',
+    title: 'Обновления',
+    service: 'self',
+    description: 'Новости сервисов, обновления системы и новые функции',
+    icon: 'megaphone',
+  },
 }
 
 // Синтетические демо-данные (показываются, когда сервис не авторизован)
@@ -221,6 +229,12 @@ export const SYNTHETIC_DATA: Record<string, any> = {
     completed: 12,
     note: 'Виджет использует данные самого дашборда — всегда реален.',
   },
+  updates: {
+    // Те же обновления, что и в REAL_DATA — виджет обновлений
+    // не зависит от статуса сервисов, всегда показывает контент
+    items: [],
+    note: 'Виджет обновлений — всегда реален, не зависит от сервисов.',
+  },
 }
 
 // Реальные данные (показываются после авторизации в сервисе)
@@ -281,6 +295,65 @@ export const REAL_DATA: Record<string, any> = {
     overdue: 1,
     completed: 12,
     note: 'Виджет использует данные самого дашборда — всегда реален.',
+  },
+  updates: {
+    items: [
+      {
+        id: 'u1',
+        kind: 'service-launch',
+        title: 'Новый сервис: билайнСРМ',
+        text: 'CRM-система для управления лидами и сделками. Подключите за 1490 ₽/мес и получите 7 дней в подарок.',
+        date: 'сегодня',
+        cta: 'Подключить',
+        service: 'beeline-crm',
+        emoji: '🆕',
+        color: 'amber',
+      },
+      {
+        id: 'u2',
+        kind: 'feature-update',
+        title: 'ОАТС: голосовое меню IVR',
+        text: 'Настройте автоматическое меню для входящих звонков — клиенты сами выберут нужный отдел.',
+        date: 'вчера',
+        cta: 'Узнать больше',
+        service: 'oats',
+        emoji: '⚙️',
+        color: 'sky',
+      },
+      {
+        id: 'u3',
+        kind: 'system-update',
+        title: 'Дашборд v2.1',
+        text: 'Добавили share-ссылки, RLS по ролям и продающие сторис. Исправили ошибки рендера.',
+        date: '2 дня назад',
+        cta: 'Читать changelog',
+        emoji: '🚀',
+        color: 'emerald',
+      },
+      {
+        id: 'u4',
+        kind: 'discount',
+        title: 'Скидка 20% на комбо',
+        text: 'Подключите ОАТС + билайнСРМ вместе и получите скидку 20% на оба сервиса.',
+        date: '3 дня назад',
+        cta: 'Взять комбо',
+        service: 'oats',
+        emoji: '🔥',
+        color: 'fuchsia',
+      },
+      {
+        id: 'u5',
+        kind: 'case-study',
+        title: 'Кейс: ритейл +35%',
+        text: 'Сеть магазинов подняла конверсию звонков на 35% после подключения ОАТС.',
+        date: 'неделю назад',
+        cta: 'Читать кейс',
+        service: 'oats',
+        emoji: '📈',
+        color: 'teal',
+      },
+    ],
+    note: 'Виджет обновлений — всегда реален, не зависит от сервисов.',
   },
 }
 

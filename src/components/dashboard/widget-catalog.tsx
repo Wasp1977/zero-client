@@ -7,6 +7,7 @@ import {
   Briefcase,
   BarChart3,
   CheckSquare,
+  Megaphone,
   X,
   Plus,
   type LucideIcon,
@@ -30,6 +31,7 @@ const ICONS: Record<string, LucideIcon> = {
   briefcase: Briefcase,
   'bar-chart': BarChart3,
   'check-square': CheckSquare,
+  megaphone: Megaphone,
 }
 
 function WidgetCatalogItem({ id }: { id: WidgetId }) {

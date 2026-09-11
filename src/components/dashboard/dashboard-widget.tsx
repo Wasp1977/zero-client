@@ -17,6 +17,8 @@ import {
   TrendingUp,
   KeyRound,
   ShoppingCart,
+  Megaphone,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -46,6 +48,7 @@ const ICONS: Record<string, LucideIcon> = {
   briefcase: Briefcase,
   'bar-chart': BarChart3,
   'check-square': CheckSquare,
+  megaphone: Megaphone,
 }
 
 const SYNTHETIC_COLOR = '#fb923c' // orange-400
@@ -325,6 +328,8 @@ export function DashboardWidget({ id }: { id: WidgetId }) {
                 <p className="text-base font-bold text-emerald-600">{data.completed}</p>
               </div>
             </div>
+          ) : id === 'updates' ? (
+            <UpdatesContent items={data.items ?? []} />
           ) : null}
         </div>
 
@@ -374,6 +379,108 @@ function AnalyticsInline() {
         <p className="text-[10px] text-slate-500">Сервисов подключено</p>
         <p className="text-lg font-bold text-slate-700">{connectedServices}</p>
       </div>
+    </div>
+  )
+}
+
+// ===========================================================================
+//  UpdatesContent — лента обновлений / рекламы новых сервисов и фич
+// ===========================================================================
+
+const UPDATE_COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = {
+  amber:   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200' },
+  sky:     { bg: 'bg-sky-50',     text: 'text-sky-700',     border: 'border-sky-200' },
+  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  fuchsia: { bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', border: 'border-fuchsia-200' },
+  teal:    { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200' },
+}
+
+const KIND_LABEL: Record<string, string> = {
+  'service-launch': 'Новый сервис',
+  'feature-update': 'Обновление функции',
+  'system-update':  'Обновление системы',
+  'discount':       'Спецпредложение',
+  'case-study':     'Кейс',
+}
+
+function UpdatesContent({ items }: { items: any[] }) {
+  const viewer = useDashboardStore((s) => s.viewer)
+  const requestPurchase = useDashboardStore((s) => s.requestPurchase)
+  const openServiceVerify = useDashboardStore((s) => s.openServiceVerify)
+  const serviceBindings = viewer?.serviceBindings
+
+  if (items.length === 0) {
+    return (
+      <div className="text-[11px] text-slate-400 text-center py-4">
+        Обновлений пока нет
+      </div>
+    )
+  }
+
+  const handleClick = (item: any) => {
+    if (!item.service) return
+    const svc = item.service as ServiceId
+    if (viewer?.isShared) {
+      // Зритель по share-ссылке: если сервис ещё не verified — открыть форму подтверждения
+      if (serviceBindings?.[svc] !== 'verified') {
+        openServiceVerify(svc)
+      }
+    } else {
+      // Админ: открывает флоу покупки
+      requestPurchase(svc)
+    }
+  }
+
+  return (
+    <div className="space-y-2 max-h-[280px] overflow-y-auto no-scrollbar -mr-1 pr-1">
+      {items.map((item) => {
+        const colors = UPDATE_COLOR_MAP[item.color] ?? UPDATE_COLOR_MAP.amber
+        const hasService = !!item.service
+        return (
+          <motion.div
+            key={item.id}
+            layout
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            className={`rounded-lg border ${colors.border} ${colors.bg} p-2.5`}
+          >
+            <div className="flex items-start gap-2">
+              <span className="text-base leading-none mt-0.5">{item.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className={`text-[9px] uppercase tracking-wider font-semibold ${colors.text}`}>
+                    {KIND_LABEL[item.kind] ?? item.kind}
+                  </span>
+                  <span className="text-[9px] text-slate-400">· {item.date}</span>
+                </div>
+                <p className="text-xs font-semibold text-slate-900 leading-tight">{item.title}</p>
+                <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{item.text}</p>
+                {hasService && (
+                  <button
+                    onClick={() => handleClick(item)}
+                    className={`mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-semibold ${colors.text} hover:underline`}
+                  >
+                    {item.cta}
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+                {!hasService && (
+                  <button
+                    className={`mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-semibold ${colors.text} hover:underline`}
+                  >
+                    {item.cta}
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )
+      })}
+      <style jsx>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { scrollbar-width: none; }
+      `}</style>
     </div>
   )
 }
