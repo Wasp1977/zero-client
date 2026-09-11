@@ -22,6 +22,7 @@ import { SharePanel } from '@/components/dashboard/share-panel'
 import { ViewerBanner } from '@/components/dashboard/viewer-banner'
 import { NamePromptScreen } from '@/components/dashboard/name-prompt-screen'
 import { ServiceVerificationBanner } from '@/components/dashboard/service-verification-banner'
+import { StoriesCarousel } from '@/components/dashboard/stories-carousel'
 
 export function Dashboard() {
   const isLoggedIn = useDashboardStore((s) => s.isLoggedIn)
@@ -136,6 +137,9 @@ export function Dashboard() {
       {/* Main */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
         <div className="space-y-4 min-w-0">
+          {/* Продающие сторис — горизонтальная лента мини-баннеров */}
+          <StoriesCarousel />
+
           {/* Empty state */}
           {addedWidgets.length === 0 ? (
             <EmptyDashboard onAdd={openCatalog} canEdit={canEditWidgets} />
